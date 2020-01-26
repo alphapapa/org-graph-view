@@ -1,4 +1,4 @@
-;;; graph.el --- Draw directed graphs in ascii
+;;; graph.el --- Draw directed graphs in ascii  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2017 by David ZUBER
 
