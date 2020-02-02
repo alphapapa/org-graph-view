@@ -72,7 +72,7 @@
                       (or (when-let* ((color (org-entry-get begin "color")))
                             (list :foreground color))
                           (when level
-                            (nth level org-level-faces))))))
+                            (nth (1- level) org-level-faces))))))
     (org-with-wide-buffer
      (when (org-at-heading-p)
        (org-narrow-to-subtree))
