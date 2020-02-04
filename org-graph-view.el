@@ -4,7 +4,7 @@
 
 ;; Author: Adam Porter <adam@alphapapa.net>
 ;; Keywords: outlines
-;; Package-Requires: ((emacs "25.2") (org "9.0") (dash "2.13.0"))
+;; Package-Requires: ((emacs "25.2") (org "9.0") (dash "2.13.0") (s "1.0"))
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -33,6 +33,7 @@
 (require 'cl-lib)
 (require 'org)
 (require 'subr-x)
+(require 'svg)
 
 (require 'dash)
 (require 'graph)
@@ -52,46 +53,53 @@
 
 ;;;; Commands
 
-(defun org-graph-view ()
-  (interactive)
-  (cl-labels ((rec (tree)
-                   (-let (((_element properties . children) tree))
-		     (if properties
-			 (cons (heading-string properties)
-			       (mapcar #'rec children))
-		       (mapcar #'rec children))))
-              (heading-string (properties)
-                              (-let* (((&plist :raw-value heading) properties)
-                                      (face (face properties)))
-                                (when heading
-                                  (propertize heading
-                                              'face face
-                                              'properties (plist-put properties :buffer (current-buffer))))))
-              (face (properties)
-                    (-let (((&plist :begin :level) properties))
-                      (or (when-let* ((color (org-entry-get begin "color")))
-                            (list :foreground color))
-                          (when level
-                            (nth (1- level) org-level-faces))))))
-    (org-with-wide-buffer
-     (when (org-at-heading-p)
-       (org-narrow-to-subtree))
-     (let* ((graph-line-wid 1)
-	    ;; (graph-draw-shape-side-border-fn #'ignore)
-	    (graph (rec (org-element-parse-buffer 'headline)))
-            (drawn (graph-draw-tree graph))
-            (inhibit-read-only t))
-       (with-current-buffer (org-graph-view-buffer)
-         (erase-buffer)
-         (save-excursion
-           (insert drawn))
-         (pop-to-buffer (current-buffer)))))))
+;; (defun org-graph-view ()
+;;   (interactive)
+;;   (cl-labels ((rec (tree)
+;;                    (-let (((_element properties . children) tree))
+;; 		     (if properties
+;; 			 (cons (heading-string properties)
+;; 			       (mapcar #'rec children))
+;; 		       (mapcar #'rec children))))
+;;               (heading-string (properties)
+;;                               (-let* (((&plist :raw-value heading) properties)
+;;                                       (face (face properties)))
+;;                                 (when heading
+;;                                   (propertize heading
+;;                                               'face face
+;;                                               'properties (plist-put properties :buffer (current-buffer))))))
+;;               (face (properties)
+;;                     (-let (((&plist :begin :level) properties))
+;;                       (or (when-let* ((color (org-entry-get begin "color")))
+;;                             (list :foreground color))
+;;                           (when level
+;;                             (nth (1- level) org-level-faces))))))
+;;     (org-with-wide-buffer
+;;      (when (org-at-heading-p)
+;;        (org-narrow-to-subtree))
+;;      (let* ((graph-line-wid 1)
+;; 	    ;; (graph-draw-shape-side-border-fn #'ignore)
+;; 	    (graph (rec (org-element-parse-buffer 'headline)))
+;;             (drawn (graph-draw-tree graph))
+;;             (inhibit-read-only t))
+;;        (with-current-buffer (org-graph-view-buffer)
+;;          (erase-buffer)
+;;          (save-excursion
+;;            (insert drawn))
+;;          (pop-to-buffer (current-buffer)))))))
 
+;;;###autoload
 (cl-defun org-graph-view-graphviz (layout)
   (interactive (pcase current-prefix-arg
                  ('nil '("twopi"))
                  (_ (list (completing-read "Layout: " '("twopi" "circo" "dot"))))))
-  (let* ((nodes (make-hash-table :test #'equal)))
+  (let* ((nodes (make-hash-table :test #'equal))
+         (source-buffer (current-buffer))
+         (root-pos (save-excursion
+                     (when (org-before-first-heading-p)
+                       (outline-next-heading))
+                     (org-back-to-heading)
+                     (point))))
     (cl-labels ((format-tree (tree &optional path)
                              (--map (format-node it path)
                                     (cddr tree)))
@@ -103,13 +111,13 @@
                                      (--map (format-node it path)
                                             children))))
                 (node-color (node)
-                            (-let (((_element (&plist :level) . children) node))
-                              (--> (face-attribute (nth (1- level) org-level-faces) :foreground)
+                            (-let* (((_element (&plist :level) . _children) node))
+                              (--> (face-attribute (nth (1- level) org-level-faces) :foreground nil 'default)
                                    (color-name-to-rgb it)
                                    (-let (((r g b) it))
                                      (color-rgb-to-hex r g b 2)))))
                 (node-id (node)
-                         (-let* (((element (properties &as &plist :begin) . children) node))
+                         (-let* (((_element (properties &as &plist :begin) . _children) node))
                            (or (car (gethash begin nodes))
                                (let* ((node-id (format "node%s" begin))
                                       (value (cons node-id node)))
@@ -130,7 +138,7 @@
                                                     (string (cons name property))
                                                     (symbol (cons name (symbol-value property))))))
                 (node-href (node)
-                           (-let* (((element (properties &as &plist :begin) . children) node))
+                           (-let* (((_element (properties &as &plist :begin) . _children) node))
                              (format "%s" begin)))
                 (monitor-wh ()
                             (-let* (((&alist 'mm-size (w h)) (car (display-monitor-attributes-list))))
@@ -144,55 +152,51 @@
                                  (s-wrap (s-join "," (cl-loop for (key value) on pairs by #'cddr
                                                               collect (format "%s=\"%s\"" key value)))
                                          "[" "]")))
-      (org-with-wide-buffer
-       (-let* ((graph-line-wid 1)
-               (root-pos (save-excursion
-                           (when (org-before-first-heading-p)
-                             (outline-next-heading))
-                           (org-back-to-heading)
-                           (point)))
-               (source-buffer (current-buffer))
-               (graphviz (format-tree (org-element-parse-buffer 'headline)))
-               (background-color (face-attribute 'default :background))
-               (root-node-name (car (gethash root-pos nodes)))
-               (inhibit-read-only t)
-               ((&alist 'geometry (_ _ monitor-width-pix monitor-height-pix)
-                        'mm-size (monitor-width-mm monitor-height-mm))
-                (car (display-monitor-attributes-list)))
-               (monitor-width-in (mm-in monitor-width-mm))
-               (monitor-height-in (mm-in monitor-height-mm))
-               (monitor-width-res (/ monitor-width-pix monitor-width-in))
-               (monitor-height-res (/ monitor-height-pix monitor-height-in))
-               (window-width-in (/ (window-text-width nil t) monitor-width-res))
-               (window-height-in (/ (window-text-height nil t) monitor-height-res))
-               image-map)
-         (with-temp-buffer
-           (save-excursion
-             (insert "digraph orggraphview {\n")
-             (insert "edge" (format-val-list "color" (face-attribute 'default :foreground)) ";\n")
-             (insert-vals "layout" layout
-                          "bgcolor" background-color
+      ;; Pop to view buffer so we know its dimensions.
+      (pop-to-buffer (org-graph-view-buffer))
+      (-let* ((graph-line-wid 1)
+              (graph (format-tree (with-current-buffer source-buffer
+                                    (org-element-parse-buffer 'headline))))
+              (background-color (face-attribute 'default :background))
+              (root-node-name (car (gethash root-pos nodes)))
+              (inhibit-read-only t)
+              ((&alist 'geometry (_ _ monitor-width-pix monitor-height-pix)
+                       'mm-size (monitor-width-mm monitor-height-mm))
+               ;; TODO: Ensure we get the monitor the frame is on.
+               (car (display-monitor-attributes-list)))
+              (monitor-width-in (mm-in monitor-width-mm))
+              (monitor-height-in (mm-in monitor-height-mm))
+              (monitor-width-res (/ monitor-width-pix monitor-width-in))
+              (monitor-height-res (/ monitor-height-pix monitor-height-in))
+              (window-width-in (/ (window-text-width nil t) monitor-width-res))
+              (window-height-in (/ (window-text-height nil t) monitor-height-res))
+              (graphviz (with-temp-buffer
+                          (save-excursion
+                            (insert "digraph orggraphview {\n")
+                            (insert "edge" (format-val-list "color" (face-attribute 'default :foreground)) ";\n")
+                            (insert "node" (format-val-list "fontname" (face-attribute 'default :family)) ";\n")
 
-                          "size" (format "%.1d,%.1d" window-width-in window-height-in)
-                          "margin" "0"
-                          "ratio" "fill"
-                          "nodesep" "0"
-                          "mindist" "0")
-             (mapc #'insert (-flatten graphviz))
-             (maphash (lambda (key value)
-                        (insert (format "%s [%s];\n" (car value)
-                                        (s-join ","
-                                                (--map (format "%s=\"%s\"" (car it) (cdr it))
-                                                       (node-properties (cdr value)))))))
-                      nodes)
-             (insert (format "root=\"%s\"" root-node-name))
-             (insert "}"))
-           (message "%s" (buffer-string))
-           (let ((s (buffer-string)))
-             (with-temp-buffer
-               (insert s)
-               (setq image-map (org-graph-view--cmapx))))
-           (org-graph-view--view-graph :map image-map :source-buffer source-buffer)))))))
+                            (insert-vals "layout" layout
+                                         "bgcolor" background-color
+                                         "size" (format "%.1d,%.1d" window-width-in window-height-in)
+                                         "margin" "0"
+                                         "ratio" "fill"
+                                         "nodesep" "0"
+                                         "mindist" "0")
+                            (mapc #'insert (-flatten graph))
+                            (maphash (lambda (_key value)
+                                       (insert (format "%s [%s];\n" (car value)
+                                                       (s-join ","
+                                                               (--map (format "%s=\"%s\"" (car it) (cdr it))
+                                                                      (node-properties (cdr value)))))))
+                                     nodes)
+                            (insert (format "root=\"%s\"" root-node-name))
+                            (insert "}"))
+                          (buffer-string)))
+              (image-map (org-graph-view--cmapx graphviz))
+              (svg-image (org-graph-view--svg graphviz :map image-map :source-buffer source-buffer)))
+        (erase-buffer)
+        (insert-image svg-image)))))
 
 (defmacro org-graph-view--graphviz (type &rest body)
   "TYPE BODY."
@@ -204,90 +208,109 @@
          ,@body)
      (error "Oops: %s" (buffer-string))))
 
-(cl-defun org-graph-view--view-graph (&key map source-buffer)
-  "Render and show graph in current buffer."
-  (if-let* ((svg-image (org-graph-view--svg)))
-      (with-current-buffer (org-graph-view-buffer)
-        (setf (image-property svg-image :map) map)
-        (setf (image-property svg-image :source-buffer) source-buffer)
-        (erase-buffer)
-        (insert-image svg-image)
-        (pop-to-buffer (current-buffer)))
-    (error "Oops: %s" (buffer-string))))
+;; (cl-defun org-graph-view--view-graph (&key map source-buffer)
+;;   "Render and show graph in current buffer."
+;;   (if-let* ((svg-image (org-graph-view--svg)))
+;;       (with-current-buffer (org-graph-view-buffer)
+;;         (setf (image-property svg-image :map) map)
+;;         (setf (image-property svg-image :source-buffer) source-buffer)
+;;         (erase-buffer)
+;;         (insert-image svg-image)
+;;         (pop-to-buffer (current-buffer)))
+;;     (error "Oops: %s" (buffer-string))))
 
-(defun org-graph-view--svg ()
+(cl-defun org-graph-view--svg (graph &key map source-buffer)
   "GRAPH."
-  (org-graph-view--graphviz "svg"
-    (let* ((image (svg-image (libxml-parse-xml-region (point-min) (point-max))))
-           (svg-xml (buffer-string)))
-      (with-current-buffer (get-buffer-create "*SVG XML*")
-        (erase-buffer)
-        (insert svg-xml))
-      image)))
+  (with-temp-buffer
+    (insert graph)
+    (org-graph-view--graphviz "svg"
+      (let* ((image (svg-image (libxml-parse-xml-region (point-min) (point-max))))
+             ;; (svg-xml (buffer-string))
+             )
+        ;; (with-current-buffer (get-buffer-create "*SVG XML*")
+        ;;   (erase-buffer)
+        ;;   (insert svg-xml))
+        (setf (image-property image :map) map)
+        (setf (image-property image :source-buffer) source-buffer)
+        image))))
 
-(defun org-graph-view--cmapx ()
+(defun org-graph-view--cmapx (graph)
   "GRAPH."
-  (org-graph-view--graphviz "cmapx"
-    (cl-labels ((convert-map (map)
-                             (-let (((_map _props . areas) map))
-                               (mapcar #'convert-area areas)))
-                (convert-area (area)
-                              (-let (((_area (&alist 'shape 'title 'href 'coords)) area))
-                                (pcase-exhaustive shape
-                                  ("poly" (list (cons 'poly (convert-coords coords)) href (list :help-echo title))))))
-                (convert-coords (coords)
-                                (->> coords (s-split ",") (-map #'string-to-number) (apply #'vector))))
-      (let* ((cmapx (libxml-parse-xml-region (point-min) (point-max))))
-        (with-current-buffer (get-buffer-create "*CMAPX*")
-          (erase-buffer)
-          (convert-map cmapx)
-          (prin1 (convert-map cmapx) (current-buffer)))))))
+  (with-temp-buffer
+    (insert graph)
+    (org-graph-view--graphviz "cmapx"
+      (cl-labels ((convert-map (map)
+                               (-let (((_map _props . areas) map))
+                                 (mapcar #'convert-area areas)))
+                  (convert-area (area)
+                                (-let (((_area (&alist 'shape 'title 'href 'coords)) area))
+                                  (pcase-exhaustive shape
+                                    ("poly" (list (cons 'poly (convert-coords coords)) href (list :help-echo title))))))
+                  (convert-coords (coords)
+                                  (->> coords (s-split ",") (-map #'string-to-number) (apply #'vector))))
+        (let* ((cmapx (libxml-parse-xml-region (point-min) (point-max))))
+          (with-current-buffer (get-buffer-create "*CMAPX*")
+            (erase-buffer)
+            (prin1 (convert-map cmapx) (current-buffer)))
+          (convert-map cmapx))))))
 
 (defun org-graph-view-jump (event)
   (interactive "e")
   (-let* (((_type position _count) event)
           ((_window pos-or-area (_x . _y) _timestamp
-                    _object text-pos . (_ (_image . (&plist :source-buffer))))
+                    _object _text-pos . (_ (_image . (&plist :source-buffer))))
            position)
-          (begin (string-to-number pos-or-area)))
+          (begin (cl-typecase pos-or-area
+                   (string (string-to-number pos-or-area))
+                   (number pos-or-area))))
     (when source-buffer
       (pop-to-buffer source-buffer)
       (goto-char begin)
       (org-reveal)
       (org-show-entry)
-      (goto-char begin))))
+      (goto-char begin)
+      (call-interactively #'org-graph-view-graphviz))))
 
 (defun org-graph-view-zoom-in (event)
   (interactive "e")
   (-let* (((_type position _count) event)
-          ((_window _pos-or-area (_x . _y) _timestamp
-                    _object text-pos . _) position)
-          ((&plist :buffer :begin)
-           (get-text-property text-pos 'properties)))
-    (when buffer
-      (pop-to-buffer buffer)
+          ((_window pos-or-area (_x . _y) _timestamp
+                    _object _text-pos . (_ (_image . (&plist :source-buffer))))
+           position)
+          (begin (cl-typecase pos-or-area
+                   (string (string-to-number pos-or-area))
+                   (number pos-or-area))))
+    (when source-buffer
+      (pop-to-buffer source-buffer)
+      (widen)
       (goto-char begin)
-      (org-graph-view))))
+      (org-narrow-to-subtree)
+      (call-interactively #'org-graph-view-graphviz))))
 
 (defun org-graph-view-zoom-out (event)
   (interactive "e")
   (-let* (((_type position _count) event)
-          ((_window _pos-or-area (_x . _y) _timestamp
-                    _object text-pos . _) position)
-          ((&plist :buffer :begin)
-           (get-text-property text-pos 'properties)))
-    (when buffer
-      (pop-to-buffer buffer)
+          ((_window pos-or-area (_x . _y) _timestamp
+                    _object _text-pos . (_ (_image . (&plist :source-buffer))))
+           position)
+          (begin (cl-typecase pos-or-area
+                   (string (string-to-number pos-or-area))
+                   (number pos-or-area))))
+    (when source-buffer
+      (pop-to-buffer source-buffer)
+      (widen)
       (goto-char begin)
-      (or (org-up-heading-safe)
-          (goto-char (point-min)))
-      (org-graph-view))))
+      (cond ((org-up-heading-safe)
+             (org-narrow-to-subtree))
+            (t (goto-char (point-min))))
+      (call-interactively #'org-graph-view-graphviz))))
 
 ;;;; Functions
 
 (defun org-graph-view-buffer ()
   (or (get-buffer "*org-graph-view*")
       (with-current-buffer (get-buffer-create "*org-graph-view*")
+        (setq cursor-type nil)
         (toggle-truncate-lines 1)
         (read-only-mode 1)
         (use-local-map org-graph-view-map)
