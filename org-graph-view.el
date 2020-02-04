@@ -116,6 +116,7 @@
       (goto-char pos-or-area)
       (org-reveal)
       (org-show-entry)
+      (org-show-children)
       (goto-char pos-or-area)
       (call-interactively #'org-graph-view))))
 
@@ -160,6 +161,7 @@
       (goto-char begin)
       (org-reveal)
       (org-show-entry)
+      (org-show-children)
       (goto-char begin)
       (call-interactively #'org-graph-view))))
 
