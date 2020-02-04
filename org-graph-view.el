@@ -40,13 +40,25 @@
 
 ;;;; Variables
 
-(defvar org-graph-view-map
+(defvar org-graph-view-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map [mouse-1] #'org-graph-view-jump)
-    (define-key map [mouse-2] #'org-graph-view-zoom-in)
-    (define-key map [mouse-3] #'org-graph-view-zoom-out)
+    (define-key map [drag-mouse-1] #'org-graph-view-jump)
+    (define-key map [drag-mouse-2] #'org-graph-view-zoom-in)
+    (define-key map [drag-mouse-3] #'org-graph-view-zoom-out)
     map)
   "Keymap.")
+
+(defvar org-graph-view-graph-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map [mouse-1] #'org-graph-view-jump-from-graph)
+    (define-key map [mouse-2] #'org-graph-view-zoom-in-from-graph)
+    (define-key map [mouse-3] #'org-graph-view-zoom-out-from-graph)
+    map)
+  "Keymap.")
+
+(define-minor-mode org-graph-view-mode
+  "Drag mouse buttons to manipulate `org-graph-view'."
+  :keymap 'org-graph-view-mode-map)
 
 ;;;; Customization
 
@@ -257,6 +269,46 @@
 (defun org-graph-view-jump (event)
   (interactive "e")
   (-let* (((_type position _count) event)
+          ((window pos-or-area (_x . _y) _timestamp
+                   _object _text-pos . _)
+           position))
+    (with-selected-window window
+      (goto-char pos-or-area)
+      (org-reveal)
+      (org-show-entry)
+      (goto-char pos-or-area)
+      (call-interactively #'org-graph-view-graphviz))))
+
+(defun org-graph-view-zoom-in (event)
+  (interactive "e")
+  (-let* (((_type position _count) event)
+          ((window pos-or-area (_x . _y) _timestamp
+                   _object _text-pos . _)
+           position))
+    (with-selected-window window
+      (goto-char pos-or-area)
+      (org-reveal)
+      (org-show-entry)
+      (goto-char pos-or-area)
+      (org-narrow-to-subtree)
+      (call-interactively #'org-graph-view-graphviz))))
+
+(defun org-graph-view-zoom-out (event)
+  (interactive "e")
+  (-let* (((_type position _count) event)
+          ((window pos-or-area (_x . _y) _timestamp
+                   _object _text-pos . _)
+           position))
+    (with-selected-window window
+      (widen)
+      (goto-char pos-or-area)
+      (when (org-up-heading-safe)
+	(org-narrow-to-subtree))
+      (call-interactively #'org-graph-view-graphviz))))
+
+(defun org-graph-view-jump-from-graph (event)
+  (interactive "e")
+  (-let* (((_type position _count) event)
           ((_window pos-or-area (_x . _y) _timestamp
                     _object _text-pos . (_ (_image . (&plist :source-buffer))))
            position)
@@ -271,7 +323,7 @@
       (goto-char begin)
       (call-interactively #'org-graph-view-graphviz))))
 
-(defun org-graph-view-zoom-in (event)
+(defun org-graph-view-zoom-in-from-graph (event)
   (interactive "e")
   (-let* (((_type position _count) event)
           ((_window pos-or-area (_x . _y) _timestamp
@@ -287,7 +339,7 @@
       (org-narrow-to-subtree)
       (call-interactively #'org-graph-view-graphviz))))
 
-(defun org-graph-view-zoom-out (event)
+(defun org-graph-view-zoom-out-from-graph (event)
   (interactive "e")
   (-let* (((_type position _count) event)
           ((_window pos-or-area (_x . _y) _timestamp
@@ -313,7 +365,7 @@
         (setq cursor-type nil)
         (toggle-truncate-lines 1)
         (read-only-mode 1)
-        (use-local-map org-graph-view-map)
+        (use-local-map org-graph-view-graph-map)
         (current-buffer))))
 
 ;;;; Footer
