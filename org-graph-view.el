@@ -119,7 +119,7 @@
             (root-node-pos (save-excursion
                              (when (org-before-first-heading-p)
                                (outline-next-heading))
-                             (org-back-to-heading)
+                             (org-back-to-heading t)
                              (point)))
             ((graph nodes) (org-graph-view--buffer-graph (current-buffer)))
             (graphviz (org-graph-view--format-graph graph nodes root-node-pos
@@ -140,6 +140,8 @@
            position))
     (with-selected-window window
       (goto-char pos-or-area)
+      (when (org-before-first-heading-p)
+        (outline-next-heading))
       (org-reveal)
       (org-show-entry)
       (org-show-children)
@@ -200,11 +202,12 @@
           (begin (cl-typecase pos-or-area
                    (string (string-to-number pos-or-area))
                    (number pos-or-area))))
-    (when source-buffer
+    (when (and source-buffer begin)
       (pop-to-buffer source-buffer)
       (widen)
       (goto-char begin)
-      (org-narrow-to-subtree)
+      (when (org-at-heading-p)
+        (org-narrow-to-subtree))
       (call-interactively #'org-graph-view))))
 
 (defun org-graph-view-zoom-out-from-graph (event)
@@ -225,13 +228,6 @@
             (t (goto-char (point-min))))
       (call-interactively #'org-graph-view))))
 
-
-
-
-
-
-
-
 ;;;; Functions
 
 (cl-defun org-graph-view--buffer-graph (buffer)
@@ -244,10 +240,13 @@
 			     (when (> depth 0)
 			       (-let* (((_element _properties . children) node)
 				       (path (append path (list node))))
-				 (list (--map (concat (node-id node) " -> " (node-id it) ";\n")
-					      children)
-				       (--map (format-node it (1- depth) path)
-					      children)))))
+				 (if children
+                                     (list (--map (concat (node-id node) " -> " (node-id it) ";\n")
+                                                  children)
+                                           (--map (format-node it (1- depth) path)
+                                                  children))
+                                   (concat (node-id node) ";\n")
+                                   ))))
                 (node-id (node)
                          (-let* (((_element (properties &as &plist :begin) . _children) node))
                            (or (car (gethash begin nodes))
@@ -257,7 +256,7 @@
                                  node-id)))))
       (with-current-buffer buffer
         (list (format-tree (org-element-parse-buffer 'headline)
-			   (+ org-graph-view-depth (1- (org-current-level))))
+			   (+ org-graph-view-depth (1- (or (org-current-level) 1))))
 	      nodes)))))
 
 (cl-defun org-graph-view--format-graph (graph nodes root-node-pos
@@ -275,7 +274,8 @@
                                               (list 'fontcolor #'node-fontcolor)
                                               (list 'penwidth #'node-penwidth))
                                         collect (cl-typecase property
-                                                  (keyword (cons name (plist-get properties property)))
+                                                  (keyword (cons name (org-link-display-format
+                                                                       (plist-get properties property))))
                                                   (function (cons name (funcall property node)))
                                                   (string (cons name property))
                                                   (symbol (cons name (symbol-value property))))))
