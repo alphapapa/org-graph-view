@@ -91,8 +91,7 @@
   (interactive (pcase current-prefix-arg
                  ('nil '("twopi"))
                  (_ (list (completing-read "Layout: " '("twopi" "circo" "dot"))))))
-  (let* ((node-id 0)
-         (nodes (make-hash-table :test #'equal)))
+  (let* ((nodes (make-hash-table :test #'equal)))
     (cl-labels ((format-tree (tree &optional path)
                              (--map (format-node it path)
                                     (cddr tree)))
@@ -120,12 +119,15 @@
                                  (cl-loop with (_element properties . _children) = node
                                           for (name property) in (list '(label :raw-value)
                                                                        '(style "filled")
+                                                                       (list 'color (lambda (&rest _)
+                                                                                      (face-attribute 'default :foreground)))
                                                                        (list 'fillcolor #'node-color))
 
                                           collect (cl-typecase property
                                                     (keyword (cons name (plist-get properties property)))
                                                     (function (cons name (funcall property node)))
-                                                    (string (cons name property)))))
+                                                    (string (cons name property))
+                                                    (symbol (cons name (symbol-value property))))))
                 (monitor-wh ()
                             (-let* (((&alist 'mm-size (w h)) (car (display-monitor-attributes-list))))
                               (list (mm-in w) (mm-in h))))
@@ -133,7 +135,11 @@
                        (* mm 0.04))
                 (insert-vals (&rest pairs)
                              (cl-loop for (key value) on pairs by #'cddr
-                                      do (insert (format "%s=\"%s\"" key value) "\n"))))
+                                      do (insert (format "%s=\"%s\"" key value) "\n")))
+                (format-val-list (&rest pairs)
+                                 (s-wrap (s-join "," (cl-loop for (key value) on pairs by #'cddr
+                                                              collect (format "%s=\"%s\"" key value)))
+                                         "[" "]")))
       (org-with-wide-buffer
        (-let* ((graph-line-wid 1)
                (root-pos (save-excursion
@@ -142,6 +148,7 @@
                            (org-back-to-heading)
                            (point)))
                (graphviz (format-tree (org-element-parse-buffer 'headline)))
+               (background-color (face-attribute 'default :background))
                (root-node-name (car (gethash root-pos nodes)))
                (inhibit-read-only t)
                ((&alist 'geometry (_ _ monitor-width-pix monitor-height-pix)
@@ -156,7 +163,10 @@
          (with-temp-buffer
            (save-excursion
              (insert "digraph orggraphview {\n")
+             (insert "edge" (format-val-list "color" (face-attribute 'default :foreground)) ";\n")
              (insert-vals "layout" layout
+                          "bgcolor" background-color
+
                           "size" (format "%.1d,%.1d" window-width-in window-height-in)
                           "margin" "0"
                           "ratio" "fill"
@@ -171,11 +181,11 @@
                       nodes)
              (insert (format "root=\"%s\"" root-node-name))
              (insert "}"))
+           (message "%s" (buffer-string))
            (org-graph-view--view-graph)))))))
 
 (defun org-graph-view--view-graph ()
   "Render and show graph in current buffer."
-  (message "%s" (buffer-string))
   (if (zerop (call-process-region (point-min) (point-max) "circo" 'delete t nil
                                   "-Tsvg"))
       (let ((image (svg-image (libxml-parse-xml-region (point-min) (point-max)))))
