@@ -87,8 +87,10 @@
            (insert drawn))
          (pop-to-buffer (current-buffer)))))))
 
-(cl-defun org-graph-view-graphviz (&key (layout "twopi"))
-  (interactive)
+(cl-defun org-graph-view-graphviz (layout)
+  (interactive (pcase current-prefix-arg
+                 ('nil '("twopi"))
+                 (_ (list (completing-read "Layout: " '("twopi" "circo" "dot"))))))
   (let* ((node-id 0)
          (nodes (make-hash-table :test #'equal)))
     (cl-labels ((format-tree (tree &optional path)
@@ -129,11 +131,10 @@
                               (list (mm-in w) (mm-in h))))
                 (mm-in (mm)
                        (* mm 0.04))
-                (insert-val (key value)
-                            (insert (format "%s=\"%s\"" key value) "\n")))
+                (insert-vals (&rest pairs)
+                             (cl-loop for (key value) on pairs by #'cddr
+                                      do (insert (format "%s=\"%s\"" key value) "\n"))))
       (org-with-wide-buffer
-       ;; (when (org-at-heading-p)
-       ;;   (org-narrow-to-subtree))
        (-let* ((graph-line-wid 1)
                (root-pos (save-excursion
                            (when (org-before-first-heading-p)
@@ -155,12 +156,12 @@
          (with-temp-buffer
            (save-excursion
              (insert "digraph orggraphview {\n")
-             (insert-val "layout" layout)
-             (insert (format "size=\"%.1d,%.1d\";\n" window-width-in window-height-in))
-             (insert "margin=\"0\";\n")
-             (insert "ratio=\"fill\";\n")
-             (insert "nodesep=\"0\";\n")
-             (insert "mindist=\"0\";\n")
+             (insert-vals "layout" layout
+                          "size" (format "%.1d,%.1d" window-width-in window-height-in)
+                          "margin" "0"
+                          "ratio" "fill"
+                          "nodesep" "0"
+                          "mindist" "0")
              (mapc #'insert (-flatten graphviz))
              (maphash (lambda (key value)
                         (insert (format "%s [%s];\n" (car value)
