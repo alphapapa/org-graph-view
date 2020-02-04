@@ -42,9 +42,9 @@
 
 (defvar org-graph-view-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map [drag-mouse-1] #'org-graph-view-jump)
-    (define-key map [drag-mouse-2] #'org-graph-view-zoom-in)
-    (define-key map [drag-mouse-3] #'org-graph-view-zoom-out)
+    (define-key map [mouse-1] #'org-graph-view-jump)
+    (define-key map [mouse-2] #'org-graph-view-zoom-in)
+    (define-key map [mouse-3] #'org-graph-view-zoom-out)
     map)
   "Keymap.")
 
@@ -261,9 +261,9 @@
                   (convert-coords (coords)
                                   (->> coords (s-split ",") (-map #'string-to-number) (apply #'vector))))
         (let* ((cmapx (libxml-parse-xml-region (point-min) (point-max))))
-          (with-current-buffer (get-buffer-create "*CMAPX*")
-            (erase-buffer)
-            (prin1 (convert-map cmapx) (current-buffer)))
+          ;; (with-current-buffer (get-buffer-create "*CMAPX*")
+          ;;   (erase-buffer)
+          ;;   (prin1 (convert-map cmapx) (current-buffer)))
           (convert-map cmapx))))))
 
 (defun org-graph-view-jump (event)
