@@ -121,13 +121,17 @@
                                                                        '(style "filled")
                                                                        (list 'color (lambda (&rest _)
                                                                                       (face-attribute 'default :foreground)))
-                                                                       (list 'fillcolor #'node-color))
+                                                                       (list 'fillcolor #'node-color)
+                                                                       (list 'href #'node-href))
 
                                           collect (cl-typecase property
                                                     (keyword (cons name (plist-get properties property)))
                                                     (function (cons name (funcall property node)))
                                                     (string (cons name property))
                                                     (symbol (cons name (symbol-value property))))))
+                (node-href (node)
+                           (-let* (((element (properties &as &plist :begin) . children) node))
+                             (format "%s" begin)))
                 (monitor-wh ()
                             (-let* (((&alist 'mm-size (w h)) (car (display-monitor-attributes-list))))
                               (list (mm-in w) (mm-in h))))
@@ -147,6 +151,7 @@
                              (outline-next-heading))
                            (org-back-to-heading)
                            (point)))
+               (source-buffer (current-buffer))
                (graphviz (format-tree (org-element-parse-buffer 'headline)))
                (background-color (face-attribute 'default :background))
                (root-node-name (car (gethash root-pos nodes)))
@@ -159,7 +164,8 @@
                (monitor-width-res (/ monitor-width-pix monitor-width-in))
                (monitor-height-res (/ monitor-height-pix monitor-height-in))
                (window-width-in (/ (window-text-width nil t) monitor-width-res))
-               (window-height-in (/ (window-text-height nil t) monitor-height-res)))
+               (window-height-in (/ (window-text-height nil t) monitor-height-res))
+               image-map)
          (with-temp-buffer
            (save-excursion
              (insert "digraph orggraphview {\n")
@@ -182,43 +188,70 @@
              (insert (format "root=\"%s\"" root-node-name))
              (insert "}"))
            (message "%s" (buffer-string))
-           (org-graph-view--view-graph)))))))
+           (let ((s (buffer-string)))
+             (with-temp-buffer
+               (insert s)
+               (setq image-map (org-graph-view--cmapx))))
+           (org-graph-view--view-graph :map image-map :source-buffer source-buffer)))))))
 
-(defun org-graph-view--view-graph ()
+(defmacro org-graph-view--graphviz (type &rest body)
+  "TYPE BODY."
+  (declare (indent defun)
+           (debug (stringp body)))
+  `(if (zerop (call-process-region (point-min) (point-max) "circo" 'delete t nil
+                                   (concat "-T" ,type)))
+       (progn
+         ,@body)
+     (error "Oops: %s" (buffer-string))))
+
+(cl-defun org-graph-view--view-graph (&key map source-buffer)
   "Render and show graph in current buffer."
-  (if (zerop (call-process-region (point-min) (point-max) "circo" 'delete t nil
-                                  "-Tsvg"))
-      (let ((image (svg-image (libxml-parse-xml-region (point-min) (point-max)))))
-        (with-current-buffer (org-graph-view-buffer)
-          (erase-buffer)
-          (insert-image image)
-          (pop-to-buffer (current-buffer))))
-    (error "Oops: %s" (buffer-string)))
-  )
+  (if-let* ((svg-image (org-graph-view--svg)))
+      (with-current-buffer (org-graph-view-buffer)
+        (setf (image-property svg-image :map) map)
+        (setf (image-property svg-image :source-buffer) source-buffer)
+        (erase-buffer)
+        (insert-image svg-image)
+        (pop-to-buffer (current-buffer)))
+    (error "Oops: %s" (buffer-string))))
 
-(defun org-graph-view--graphviz (tree)
-  (let* ((node-id 0))
-    (cl-labels ((rec (tree)
-                     (-let (((_element properties . children) tree))
-                       (if properties
-                           (cons (heading-string properties)
-                                 (mapcar #'rec children))
-                         (mapcar #'rec children))))
-                (new-node-id ()
-                             ;; Return new node ID.
-                             (format "node:%s" (cl-incf node-id)))
-                ))
-    ))
+(defun org-graph-view--svg ()
+  "GRAPH."
+  (org-graph-view--graphviz "svg"
+    (let* ((image (svg-image (libxml-parse-xml-region (point-min) (point-max))))
+           (svg-xml (buffer-string)))
+      (with-current-buffer (get-buffer-create "*SVG XML*")
+        (erase-buffer)
+        (insert svg-xml))
+      image)))
+
+(defun org-graph-view--cmapx ()
+  "GRAPH."
+  (org-graph-view--graphviz "cmapx"
+    (cl-labels ((convert-map (map)
+                             (-let (((_map _props . areas) map))
+                               (mapcar #'convert-area areas)))
+                (convert-area (area)
+                              (-let (((_area (&alist 'shape 'title 'href 'coords)) area))
+                                (pcase-exhaustive shape
+                                  ("poly" (list (cons 'poly (convert-coords coords)) href (list :help-echo title))))))
+                (convert-coords (coords)
+                                (->> coords (s-split ",") (-map #'string-to-number) (apply #'vector))))
+      (let* ((cmapx (libxml-parse-xml-region (point-min) (point-max))))
+        (with-current-buffer (get-buffer-create "*CMAPX*")
+          (erase-buffer)
+          (convert-map cmapx)
+          (prin1 (convert-map cmapx) (current-buffer)))))))
 
 (defun org-graph-view-jump (event)
   (interactive "e")
   (-let* (((_type position _count) event)
-          ((_window _pos-or-area (_x . _y) _timestamp
-                    _object text-pos . _) position)
-          ((&plist :buffer :begin)
-           (get-text-property text-pos 'properties)))
-    (when buffer
-      (pop-to-buffer buffer)
+          ((_window pos-or-area (_x . _y) _timestamp
+                    _object text-pos . (_ (_image . (&plist :source-buffer))))
+           position)
+          (begin (string-to-number pos-or-area)))
+    (when source-buffer
+      (pop-to-buffer source-buffer)
       (goto-char begin)
       (org-reveal)
       (org-show-entry)
