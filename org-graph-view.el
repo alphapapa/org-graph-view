@@ -57,6 +57,32 @@
 
 ;;;; Customization
 
+(defgroup org-graph-view nil
+  "Settings for `org-graph-view'."
+  ;; FIXME: Add url.
+  :group 'org)
+
+(defcustom org-graph-view-depth 3
+  "Render nodes this many levels deep."
+  :type 'integer)
+
+(defcustom org-graph-view-overlap "false"
+  "How to handle overlapping.  See Graphviz documentation."
+  :type '(choice (const :tag "Voronoi" "false")
+		 (const :tag "Scale" "scale")
+		 (const :tag "Allow overlap" "true")))
+
+(defcustom org-graph-view-shape-default "oval"
+  "Shape for non-to-do nodes.  See Graphviz documentation."
+  :type 'string)
+
+(defcustom org-graph-view-shape-todo "box"
+  "Shape for to-do nodes.  See Graphviz documentation."
+  :type 'string)
+
+(defcustom org-graph-view-shape-done "plaintext"
+  "Shape for done nodes.  See Graphviz documentation."
+  :type 'string)
 
 ;;;; Commands
 
@@ -211,16 +237,17 @@
 (cl-defun org-graph-view--buffer-graph (buffer)
   "Return (graph nodes) for BUFFER."
   (let ((nodes (make-hash-table :test #'equal)))
-    (cl-labels ((format-tree (tree &optional path)
-                             (--map (format-node it path)
+    (cl-labels ((format-tree (tree depth &optional path)
+                             (--map (format-node it depth path)
                                     (cddr tree)))
-                (format-node (node &optional path)
-                             (-let* (((_element _properties . children) node)
-                                     (path (append path (list node))))
-                               (list (--map (concat (node-id node) " -> " (node-id it) ";\n")
-                                            children)
-                                     (--map (format-node it path)
-                                            children))))
+                (format-node (node depth &optional path)
+			     (when (> depth 0)
+			       (-let* (((_element _properties . children) node)
+				       (path (append path (list node))))
+				 (list (--map (concat (node-id node) " -> " (node-id it) ";\n")
+					      children)
+				       (--map (format-node it (1- depth) path)
+					      children)))))
                 (node-id (node)
                          (-let* (((_element (properties &as &plist :begin) . _children) node))
                            (or (car (gethash begin nodes))
@@ -229,7 +256,9 @@
                                  (puthash begin value nodes)
                                  node-id)))))
       (with-current-buffer buffer
-        (list (format-tree (org-element-parse-buffer 'headline)) nodes)))))
+        (list (format-tree (org-element-parse-buffer 'headline)
+			   (+ org-graph-view-depth (1- (org-current-level))))
+	      nodes)))))
 
 (cl-defun org-graph-view--format-graph (graph nodes root-node-pos
                                               &key layout width-in height-in)
@@ -238,11 +267,13 @@
                                (cl-loop with (_element properties . children) = node
                                         for (name property) in
                                         (list '(label :raw-value)
-                                              '(style "filled")
-                                              (list 'color (lambda (&rest _)
-                                                             (face-attribute 'default :foreground)))
                                               (list 'fillcolor #'node-color)
-                                              (list 'href #'node-href))
+                                              (list 'href #'node-href)
+					      (list 'shape #'node-shape)
+                                              (list 'style #'node-style)
+                                              (list 'color #'node-pencolor)
+                                              (list 'fontcolor #'node-fontcolor)
+                                              (list 'penwidth #'node-penwidth))
                                         collect (cl-typecase property
                                                   (keyword (cons name (plist-get properties property)))
                                                   (function (cons name (funcall property node)))
@@ -251,12 +282,49 @@
               (node-href (node)
                          (-let* (((_element (properties &as &plist :begin) . _children) node))
                            (format "%s" begin)))
+	      (node-shape (node)
+			  (-let* (((_element (&plist :todo-type) . children) node))
+			    (pcase-exhaustive children
+                              ('nil (pcase todo-type
+                                      ('nil org-graph-view-shape-done)
+
+                                      (_ org-graph-view-shape-todo)))
+                              (_ org-graph-view-shape-default))))
+              (node-style (node)
+			  (-let* (((_element _properties . children) node))
+			    (pcase children
+                              ('nil "solid")
+                              (_ "filled"))))
               (node-color (node)
-                          (-let* (((_element (&plist :level) . _children) node))
-                            (--> (face-attribute (nth (1- level) org-level-faces) :foreground nil 'default)
-                                 (color-name-to-rgb it)
-                                 (-let (((r g b) it))
-                                   (color-rgb-to-hex r g b 2)))))
+                          (-let* (((_element (&plist :level :todo-type) . _children) node))
+                            (pcase todo-type
+                              ('nil (level-color level))
+                              ('todo (level-color level))
+                              ('done (level-color level)))))
+              (node-fontcolor (node)
+                              (-let* (((_element (&plist :level) . children) node))
+                                (pcase children
+                                  ('nil (level-color level))
+                                  (_ (face-attribute 'default :background)))))
+              (level-color (level)
+                           (color-name-to-hex
+                            (face-attribute (nth (1- level) org-level-faces)
+                                            :foreground nil 'default)))
+              (color-name-to-hex (color)
+                                 (-let (((r g b) (color-name-to-rgb color)))
+                                   (color-rgb-to-hex r g b 2)) )
+              (node-pencolor (node)
+                             (-let* (((_element (&plist :level :todo-type) . _children) node))
+                               (pcase todo-type
+                                 ('nil (level-color level))
+                                 ('todo (color-name-to-hex (face-attribute 'org-todo :foreground nil 'default)))
+                                 ('done (level-color level)))))
+              (node-penwidth (node)
+                             (-let* (((_element (&plist :todo-type) . _children) node))
+                               (pcase todo-type
+                                 ('nil "1")
+                                 ('todo "2")
+                                 ('done "0.5"))))
               (insert-vals (&rest pairs)
                            (cl-loop for (key value) on pairs by #'cddr
                                     do (insert (format "%s=\"%s\"" key value) "\n")))
@@ -269,10 +337,15 @@
         (save-excursion
           (insert "digraph orggraphview {\n")
           (insert "edge" (format-val-list "color" (face-attribute 'default :foreground)) ";\n")
-          (insert "node" (format-val-list "fontname" (face-attribute 'default :family)) ";\n")
+          (insert "node" (format-val-list "fontname" (face-attribute 'default :family)
+					  "nodesep" "1"
+					  "mindist" "1"
+					  )
+		  ";\n")
           (insert-vals "layout" layout
                        "bgcolor" (face-attribute 'default :background)
                        "size" (format "%.1d,%.1d" width-in height-in)
+		       "overlap" org-graph-view-overlap
                        "margin" "0"
                        "ratio" "fill"
                        "nodesep" "0"
@@ -336,10 +409,19 @@ commands can find the buffer."
                                  (mapcar #'convert-area areas)))
                   (convert-area (area)
                                 (-let (((_area (&alist 'shape 'title 'href 'coords)) area))
-                                  (pcase-exhaustive shape
-                                    ("poly" (list (cons 'poly (convert-coords coords)) href (list :help-echo title))))))
-                  (convert-coords (coords)
-                                  (->> coords (s-split ",") (-map #'string-to-number) (apply #'vector))))
+                                  (list (pcase-exhaustive shape
+                                          ("circle" (cons 'circle (convert-circle coords)))
+                                          ("poly" (cons 'poly (convert-poly coords)))
+                                          ("rect" (cons 'rect (convert-rect coords))))
+                                        href (list :help-echo title))))
+                  (convert-circle (coords)
+                                  (-let (((x y r) (->> coords (s-split ",") (-map #'string-to-number))))
+                                    (cons (cons x y) r)))
+                  (convert-poly (coords)
+                                (->> coords (s-split ",") (-map #'string-to-number) (apply #'vector)))
+                  (convert-rect (coords)
+                                (-let (((x0 y0 x1 y1) (->> coords (s-split ",") (-map #'string-to-number))))
+                                  (cons (cons x0 y0) (cons x1 y1)))))
         (let* ((cmapx (libxml-parse-xml-region (point-min) (point-max))))
           (convert-map cmapx))))))
 
