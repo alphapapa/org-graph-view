@@ -55,8 +55,6 @@
     map)
   "Keymap.")
 
-
-
 ;;;; Customization
 
 
@@ -119,7 +117,7 @@
       (org-reveal)
       (org-show-entry)
       (goto-char pos-or-area)
-      (call-interactively #'org-graph-view-graphviz))))
+      (call-interactively #'org-graph-view))))
 
 (defun org-graph-view-zoom-in (event)
   (interactive "e")
@@ -133,7 +131,7 @@
       (org-show-entry)
       (goto-char pos-or-area)
       (org-narrow-to-subtree)
-      (call-interactively #'org-graph-view-graphviz))))
+      (call-interactively #'org-graph-view))))
 
 (defun org-graph-view-zoom-out (event)
   (interactive "e")
@@ -146,7 +144,7 @@
       (goto-char pos-or-area)
       (when (org-up-heading-safe)
 	(org-narrow-to-subtree))
-      (call-interactively #'org-graph-view-graphviz))))
+      (call-interactively #'org-graph-view))))
 
 (defun org-graph-view-jump-from-graph (event)
   (interactive "e")
@@ -163,7 +161,7 @@
       (org-reveal)
       (org-show-entry)
       (goto-char begin)
-      (call-interactively #'org-graph-view-graphviz))))
+      (call-interactively #'org-graph-view))))
 
 (defun org-graph-view-zoom-in-from-graph (event)
   (interactive "e")
@@ -179,7 +177,7 @@
       (widen)
       (goto-char begin)
       (org-narrow-to-subtree)
-      (call-interactively #'org-graph-view-graphviz))))
+      (call-interactively #'org-graph-view))))
 
 (defun org-graph-view-zoom-out-from-graph (event)
   (interactive "e")
@@ -197,7 +195,7 @@
       (cond ((org-up-heading-safe)
              (org-narrow-to-subtree))
             (t (goto-char (point-min))))
-      (call-interactively #'org-graph-view-graphviz))))
+      (call-interactively #'org-graph-view))))
 
 
 
