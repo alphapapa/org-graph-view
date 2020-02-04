@@ -87,6 +87,58 @@
            (insert drawn))
          (pop-to-buffer (current-buffer)))))))
 
+(defun org-graph-view-graphviz ()
+  (interactive)
+  (let* ((node-id 0))
+    (cl-labels ((rec (tree)
+                     (-let (((_element properties . children) tree))
+                       (if children
+                           (--map (concat (s-join " -> " (cons (node-id properties)
+                                                               (mapcar #'rec children)))
+                                          ";\n")
+                                  children)
+                         (concat (s-join " -> " (list (node-id properties)))
+                                 ";\n"))))
+                (node-id (properties)
+                         (plist-get properties :raw-value))
+                (format-tree (tree)
+                             (mapcar #'format-node (cddr tree)))
+                (format-node (node)
+                             (-let (((_element properties . children) node))
+                               (if children
+                                   (--map (concat (node-id properties) " -> " it)
+                                          (-flatten (format-tree node)))
+                                 (concat (node-id properties) ";\n"))))
+                (new-node-id ()
+                             ;; Return new node ID.
+                             (format "node:%s" (cl-incf node-id))))
+      (org-with-wide-buffer
+       (when (org-at-heading-p)
+         (org-narrow-to-subtree))
+       (let* ((graph-line-wid 1)
+              (graphviz (format-tree (org-element-parse-buffer 'headline)))
+              (inhibit-read-only t))
+         (with-current-buffer (org-graph-view-buffer)
+           (erase-buffer)
+           (save-excursion
+             (mapc #'insert (-flatten graphviz))
+             )
+           (pop-to-buffer (current-buffer))))))))
+
+(defun org-graph-view--graphviz (tree)
+  (let* ((node-id 0))
+    (cl-labels ((rec (tree)
+                     (-let (((_element properties . children) tree))
+                       (if properties
+                           (cons (heading-string properties)
+                                 (mapcar #'rec children))
+                         (mapcar #'rec children))))
+                (new-node-id ()
+                             ;; Return new node ID.
+                             (format "node:%s" (cl-incf node-id)))
+                ))
+    ))
+
 (defun org-graph-view-jump (event)
   (interactive "e")
   (-let* (((_type position _count) event)
