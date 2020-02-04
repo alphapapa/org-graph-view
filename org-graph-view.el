@@ -36,7 +36,6 @@
 (require 'svg)
 
 (require 'dash)
-(require 'graph)
 
 ;;;; Variables
 
@@ -166,20 +165,19 @@
                                          "[" "]")))
       ;; Pop to view buffer so we know its dimensions.
       (pop-to-buffer (org-graph-view-buffer))
-      (-let* ((graph-line-wid 1)
-              (graph (format-tree (with-current-buffer source-buffer
+      (-let* ((graph (format-tree (with-current-buffer source-buffer
                                     (org-element-parse-buffer 'headline))))
               (background-color (face-attribute 'default :background))
               (root-node-name (car (gethash root-pos nodes)))
               (inhibit-read-only t)
-              ((&alist 'geometry (_ _ monitor-width-pix monitor-height-pix)
+              ((&alist 'geometry (_ _ monitor-width-px monitor-height-px)
                        'mm-size (monitor-width-mm monitor-height-mm))
                ;; TODO: Ensure we get the monitor the frame is on.
                (car (display-monitor-attributes-list)))
               (monitor-width-in (mm-in monitor-width-mm))
               (monitor-height-in (mm-in monitor-height-mm))
-              (monitor-width-res (/ monitor-width-pix monitor-width-in))
-              (monitor-height-res (/ monitor-height-pix monitor-height-in))
+              (monitor-width-res (/ monitor-width-px monitor-width-in))
+              (monitor-height-res (/ monitor-height-px monitor-height-in))
               (window-width-in (/ (window-text-width nil t) monitor-width-res))
               (window-height-in (/ (window-text-height nil t) monitor-height-res))
               (graphviz (with-temp-buffer
@@ -360,8 +358,10 @@
 ;;;; Functions
 
 (defun org-graph-view-buffer ()
+  "Return initialized \"*org-graph-view*\" buffer."
   (or (get-buffer "*org-graph-view*")
       (with-current-buffer (get-buffer-create "*org-graph-view*")
+        (buffer-disable-undo)
         (setq cursor-type nil)
         (toggle-truncate-lines 1)
         (read-only-mode 1)
