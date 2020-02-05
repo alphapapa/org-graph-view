@@ -66,7 +66,7 @@
   "Render nodes this many levels deep."
   :type 'integer)
 
-(defcustom org-graph-view-overlap "false"
+(defcustom org-graph-view-overlap "true"
   "How to handle overlapping.  See Graphviz documentation."
   :type '(choice (const :tag "Voronoi" "false")
 		 (const :tag "Scale" "scale")
@@ -187,6 +187,8 @@
     (when source-buffer
       (pop-to-buffer source-buffer)
       (goto-char begin)
+      (when (org-before-first-heading-p)
+        (outline-next-heading))
       (org-reveal)
       (org-show-entry)
       (org-show-children)
