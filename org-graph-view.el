@@ -81,9 +81,19 @@
   "Shape for done nodes.  See Graphviz documentation."
   :type 'string)
 
-(defcustom org-graph-view-layout "neato"
+(defcustom org-graph-view-layout "twopi"
   "Default layout.  See Graphviz documentation."
-  :type '(choice '("circo" "dot" "fdp" "neato" "sfdp" "twopi")))
+  :type '(choice ((const :description "Pretty good layout.  Offers perspective/root node."
+                         "twopi")
+                  (const :description "Good all-around layout.  No perspective/root node."
+                         "neato")
+                  (const :description "Spacious layout, smaller labels with larger graphs.  Offers perspective/root node."
+                         "circo")
+                  (const :description "Very cozy layout, larger labels.  Some randomness.  No perspective/root node."
+                         "fdp")
+                  (const :description "Top-down, linear layout.  Not very efficient in terms of screen space."
+                         "dot")
+                  (const :description "Similar to fdp." "sfdp"))))
 
 ;;;; Commands
 
