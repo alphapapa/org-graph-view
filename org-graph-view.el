@@ -21,10 +21,7 @@
 
 ;;; Commentary:
 
-;; An early proof-of-concept.
-
-;; Uses <https://github.com/storax/graph.el>, which is included in
-;; this repo since it's not in MELPA.
+;; A usable work-in-progress.  Feedback is welcome.
 
 ;;; Code:
 
