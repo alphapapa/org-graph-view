@@ -108,22 +108,27 @@
                                               (monitor-height-in (mm-in monitor-height-mm))
                                               (monitor-width-res (/ monitor-width-px monitor-width-in))
                                               (monitor-height-res (/ monitor-height-px monitor-height-in))
-                                              (window-width-in (/ (window-text-width nil t) monitor-width-res))
+                                              (window-width-in (/  (window-text-width nil t) monitor-width-res))
                                               (window-height-in (/ (window-text-height nil t) monitor-height-res)))
-                                        (list window-width-in window-height-in))))
+                                        (list window-width-in window-height-in
+                                              monitor-width-res monitor-height-res))))
               (mm-in (mm) (* mm 0.04)))
     (-let* ((graph-buffer (org-graph-view-buffer))
-            ((width-in height-in) (save-window-excursion
-                                    (pop-to-buffer graph-buffer)
-                                    (window-dimensions-in)))
+            ((width-in height-in width-res height-res)
+             (save-window-excursion
+               (pop-to-buffer graph-buffer)
+               (window-dimensions-in)))
             (root-node-pos (save-excursion
                              (when (org-before-first-heading-p)
                                (outline-next-heading))
                              (org-back-to-heading t)
                              (point)))
             ((graph nodes) (org-graph-view--buffer-graph (current-buffer)))
-            (graphviz (org-graph-view--format-graph graph nodes root-node-pos
-                                                    :layout layout :width-in width-in :height-in height-in))
+            (graphviz (org-graph-view--format-graph graph nodes root-node-pos :layout layout
+                                                    :width-in width-in :height-in height-in
+                                                    ;; Average the two resolutions.
+                                                    ;; NOTE: Not used at the moment.  See later comment.
+                                                    :dpi (/ (+ width-res height-res) 2)))
             (image-map (org-graph-view--graph-map graphviz))
             (svg-image (org-graph-view--svg graphviz :map image-map :source-buffer (current-buffer)))
             (inhibit-read-only t))
@@ -262,7 +267,7 @@
 	      nodes)))))
 
 (cl-defun org-graph-view--format-graph (graph nodes root-node-pos
-                                              &key layout width-in height-in)
+                                              &key layout width-in height-in dpi)
   "Return Graphviz string for GRAPH and NODES viewed from ROOT-NODE-POS."
   (cl-labels ((node-properties (node)
                                (cl-loop with (_element properties . children) = node
@@ -347,6 +352,9 @@
           (insert-vals "layout" layout
                        "bgcolor" (face-attribute 'default :background)
                        "size" (format "%.1d,%.1d" width-in height-in)
+                       ;; NOTE: dpi doesn't seem to be present in my version of Graphviz;
+                       ;; or, at least, setting it seems to cause invalid output.
+                       ;;  "dpi" (format "%s" dpi)
 		       "overlap" org-graph-view-overlap
                        "margin" "0"
                        "ratio" "fill"
