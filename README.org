@@ -1,0 +1,5 @@
+#+TITLE: org-graph-view
+
+This is a work-in-progress.  It's not "packaged" yet.  Feel free to use and give feedback.
+
+[[demo.gif]]
