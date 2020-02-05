@@ -81,6 +81,10 @@
   "Shape for done nodes.  See Graphviz documentation."
   :type 'string)
 
+(defcustom org-graph-view-layout "neato"
+  "Default layout.  See Graphviz documentation."
+  :type '(choice '("circo" "dot" "fdp" "neato" "sfdp" "twopi")))
+
 ;;;; Commands
 
 ;;;###autoload
@@ -92,8 +96,8 @@
 ;;;###autoload
 (cl-defun org-graph-view (layout)
   (interactive (pcase current-prefix-arg
-                 ('nil '("twopi"))
-                 (_ (list (completing-read "Layout: " '("twopi" "circo" "dot"))))))
+                 ('nil (list org-graph-view-layout))
+                 (_ (list (completing-read "Layout: " (cadadr (get 'org-graph-view-layout 'custom-type)))))))
   (cl-labels ((window-dimensions-in (&optional (window (selected-window)))
                                     ;; Return WINDOW (width-in height-in) in inches.
                                     (with-selected-window window
