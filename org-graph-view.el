@@ -264,7 +264,7 @@
 	      nodes)))))
 
 (cl-defun org-graph-view--format-graph (graph nodes root-node-pos
-                                              &key layout width-in height-in dpi)
+                                              &key layout width-in height-in _dpi)
   "Return Graphviz string for GRAPH and NODES viewed from ROOT-NODE-POS."
   (cl-labels ((node-properties (node)
                                (cl-loop with (_element properties . children) = node
@@ -386,7 +386,7 @@
 Current buffer should contain a Graphviz graph.  Graphviz is
 called and replaces the buffer content with the rendered output."
   (declare (indent defun) (debug (stringp body)))
-  `(if (zerop (call-process-region (point-min) (point-max) "circo" 'delete t nil
+  `(if (zerop (call-process-region (point-min) (point-max) "dot" 'delete t nil
                                    (concat "-T" ,type)))
        (progn
          ,@body)
