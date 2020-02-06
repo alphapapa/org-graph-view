@@ -1,0 +1,145 @@
+#+TITLE: Notes on org-graph-view
+
+* References / Prior Art
+
+** [[http://pages.sachachua.com/evil-plans/][Sacha Chua's "evil plans"]]
+
+Found linked from [[id:6597bc38-370a-44bf-af60-168e026f40af][org-mind-map]].  She wrote code to generate nice Graphviz graphs from Org trees.  We're already doing mostly the same thing, but may be useful for reference.  Assuming that she won't mind if I reproduce it here:
+
+#+BEGIN_SRC elisp
+  (defvar include-someday nil)
+  (defun sacha/fill-string (string new-fill-column &optional replace-char)
+    "Wrap STRING to NEW-FILL-COLUMN. Change newlines to REPLACE-CHAR."
+    (with-temp-buffer
+      (insert string)
+      (let ((fill-column new-fill-column))
+        (fill-region (point-min) (point-max))
+        (if replace-char
+            (progn
+              (goto-char (point-min))
+              (while (re-search-forward "\n" nil t)
+                (replace-match replace-char t t))))
+        (buffer-string))))
+
+  (defun sacha/org-map-goals (tag)
+    "Return an alist, based on the TAG tree and \"so that I can\" link structure.
+   Structure: ((nodes . ((components) ...)) (edges . ((a . b) ...)))"
+    (let (nodes edges)
+      ;; Go through the entries
+      (org-map-entries
+       (lambda ()
+         (let ((heading (org-heading-components)))
+           (when (or (not (elt heading 2)) (member (elt heading 2) (if include-someday '("TODO" "WAITING" "SOMEDAY") '("TODO"))))
+             (save-excursion
+               (save-restriction
+                 ;; Ignore subtrees in the body
+                 (org-narrow-to-subtree)
+                 (save-excursion
+                   (org-set-property "CUSTOM_ID" (replace-regexp-in-string "[^A-Za-z0-9]" "_" (elt heading 4))))
+                 (end-of-line)
+                 (narrow-to-region
+                  (point-min)
+                  (if (re-search-forward
+                       (concat "[\r\n]\\(" org-outline-regexp "\\)") nil t)
+                      (match-beginning 1)
+                    (point-max)))
+                 (goto-char (point-min))
+                 (when (> (car heading) 1)
+                   (setq nodes (cons heading nodes)))
+                 (when (re-search-forward "so that I can" nil t)
+                   (while (re-search-forward org-bracket-link-regexp (line-end-position) t)
+                     (setq edges (cons (cons (elt heading 4) (match-string-no-properties 1)) edges)))))))))
+       tag)
+      (list (cons 'nodes nodes) (cons 'edges edges))))
+
+  (defvar sacha/elgraphviz-attributes '((:color . "color")
+                                        (:fontname . "fontname")
+                                        (:pad . "pad")
+                                        (:shape . "shape")
+                                        (:style . "style")
+                                        (:tooltip . "tooltip")
+                                        (:target . "target")
+                                        (:url . "URL")
+                                        (:width . "width"))
+    "List of attributes")
+
+
+  (defun sacha/elgraphviz-process-property-list (prop-list)
+    "Convert PROP-LIST to an alphabetically sorted, comma-separated attribute list."
+    (mapconcat 'identity
+               (delq nil
+                     (mapcar (lambda (x)
+                               (if (plist-get prop-list (car x))
+                                   (format "%s=\"%s\"" (cdr x)
+                                           (sacha/elgraphviz-quote-string (plist-get prop-list (car x))))))
+                             sacha/elgraphviz-attributes))
+               ","))
+
+  (ert-deftest sacha/elgraphviz-process-property-list ()
+    (should (string= (sacha/elgraphviz-process-property-list '(:width 1)) "width=\"1\"")))
+
+  (defun sacha/elgraphviz-quote-string (string) "Quote \" in strings." (replace-regexp-in-string "\"" "\\\"" (format "%s" string)))
+
+  (defun sacha/elgraphviz-node (name &rest args)
+    "Return the node definition for NAME with ARGS as attributes."
+    (if args
+        (format "\"%s\" [%s]" (sacha/elgraphviz-quote-string name) (sacha/elgraphviz-process-property-list args))
+      (format "\"%s\"" (sacha/elgraphviz-quote-string name))))
+  (defun sacha/elgraphviz-directed-edge (a b &rest args)
+    "Return the node definition for NAME with ARGS as attributes."
+    (format "\"%s\" -> \"%s\" [%s]"
+            (sacha/elgraphviz-quote-string a)
+            (sacha/elgraphviz-quote-string b)
+            (sacha/elgraphviz-process-property-list args)))
+
+  (ert-deftest sacha/elgraphviz-node ()
+    (should (string= (sacha/elgraphviz-node "Test" :style "filled" :url "http://example.com" :tooltip "test")
+                     "\"Test\" [style=\"filled\",tooltip=\"test\",URL=\"http://example.com\"]")))
+
+  (defun sacha/elgraphviz-default-node (&rest attributes)
+    (format "node [%s]" (sacha/elgraphviz-process-property-list attributes)))
+
+  (ert-deftest sacha/elgraphviz-default-node ()
+    (should (string= (sacha/elgraphviz-default-node :color "#cccccc" :width 100)
+                     "node [color=\"#cccccc\",width=\"100\"]")))
+
+  (defun sacha/elgraphviz-default-edge (&rest attributes)
+    (format "edge [%s]" (sacha/elgraphviz-process-property-list attributes)))
+  (defun sacha/elgraphviz-attribute (name val)
+    (format "%s=\"%s\"" name (sacha/elgraphviz-quote-string val)))
+
+  (defun sacha/elgraphviz-digraph (id &rest body)
+    (concat "digraph " id " {\n"
+            (mapconcat 'identity body "\n")
+            "}"))
+
+  (defun sacha/org-map-to-graphviz (map fill-column id)
+    "Convert MAP to a graphviz representation. Wrap titles at FILL-COLUMN."
+    (sacha/elgraphviz-digraph id
+                              (sacha/elgraphviz-attribute "id" id)
+                              (sacha/elgraphviz-default-node :shape "box" :fontname "Open Sans" :pad 1)
+                              (sacha/elgraphviz-default-edge :color "#CCCCCC")
+                              (mapconcat
+                               (lambda (x)
+                                 (sacha/elgraphviz-directed-edge
+                                  (sacha/fill-string (car x) fill-column "\\n")
+                                  (sacha/fill-string (cdr x) fill-column "\\n")))
+                               (cdr (assoc 'edges map)) "\n")
+                              (mapconcat
+                               (lambda (x)
+                                 (sacha/elgraphviz-node
+                                  (sacha/fill-string (elt x 4) fill-column "\\n")
+                                  :style (if (null (elt x 2)) "filled")
+                                  :url (concat "index.html#" (replace-regexp-in-string "[^A-Za-z0-9]" "_" (elt x 4)))
+                                  :target "_parent"
+                                  :tooltip (elt x 4)))
+                               (cdr (assoc 'nodes map)) "\n")))
+  (org-babel-execute:dot (sacha/org-map-to-graphviz (sacha/org-map-goals tag) fill-column id) (list (cons :file outputfile) (cons :cmdline cmdline)))
+#+END_SRC
+
+** [[https://github.com/the-humanities/org-mind-map][GitHub - the-humanities/org-mind-map: This is an emacs package that creates graphviz directed graphs.]]
+:PROPERTIES:
+:ID:       6597bc38-370a-44bf-af60-168e026f40af
+:END:
+
+Exports graphs to PDF files.  Has some interesting features like showing tags of each heading using Graphviz records.
