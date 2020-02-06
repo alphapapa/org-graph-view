@@ -283,7 +283,7 @@
   (cl-labels ((node-properties (node)
                                (cl-loop with (_element properties . children) = node
                                         for (name property) in
-                                        (list '(label :raw-value)
+                                        (list (list 'label #'node-label)
                                               (list 'fillcolor #'node-color)
                                               (list 'href #'node-href)
 					      (list 'shape #'node-shape)
@@ -292,11 +292,16 @@
                                               (list 'fontcolor #'node-fontcolor)
                                               (list 'penwidth #'node-penwidth))
                                         collect (cl-typecase property
-                                                  (keyword (cons name (org-link-display-format
-                                                                       (plist-get properties property))))
+                                                  (keyword (cons name (->> (plist-get properties property)
+									   (org-link-display-format)
+									   (s-replace "\"" "\\\"")
+                                                                           (s-word-wrap 25))))
                                                   (function (cons name (funcall property node)))
                                                   (string (cons name property))
                                                   (symbol (cons name (symbol-value property))))))
+	      (node-label (node)
+			  (-let* (((_element (&plist :raw-value) . _children) node))
+                            (s-word-wrap 25 (s-replace "\"" "\\\"" (org-link-display-format raw-value)))))
               (node-href (node)
                          (-let* (((_element (properties &as &plist :begin) . _children) node))
                            (format "%s" begin)))
