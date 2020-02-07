@@ -280,101 +280,123 @@
 			   (+ org-graph-view-depth (1- (or (org-current-level) 1))))
 	      nodes)))))
 
+(defmacro substlet (substs &rest body)
+  "Like `macrolet' with `defsubst' semantics.
+In other words, like `defsubst', defining SUBSTS to be expanded
+in BODY.  In other words, like `macrolet', but macro bodies need
+not be backquoted, and arguments need not be unquoted within
+them.  In other words, like `flet', but bodies are inlined
+instead of called as functions (i.e. they are not functions, so
+they can't be used with `map' or `funcall').
+
+The purpose of this macro is to allow for clearer organization of
+code within functions while avoiding 1) the function call
+overhead of `flet' and `labels', and 2) the need to backquote
+bodies and unquote arguments of `macrolet'."
+  (declare (indent defun))
+  (let ((macros
+         (mapcar
+          (lambda (subst)
+            (pcase-let* ((`(,name ,args . ,body) subst)
+                         (comma-args
+                          (cl-loop with rest-p
+                                   for arg in args
+                                   if (eq '&rest arg)
+                                   do (setf rest-p t)
+                                   else
+                                   collect (cons arg (if rest-p
+                                                         (cons 'list (list (quote \,) arg))
+                                                       (list (quote \,) arg)))))
+                         (comma-body (cl-sublis comma-args body)))
+              (append (list name args)
+                      (list (cons 'backquote (list (cons 'progn comma-body)))))))
+          substs)))
+    `(cl-macrolet ,macros ,@body)))
+
 (cl-defun org-graph-view--format-graph (graph nodes root-node-pos
                                               &key layout width-in height-in _dpi)
   "Return Graphviz string for GRAPH and NODES viewed from ROOT-NODE-POS."
-  (cl-labels ((node-properties (node)
-                               (cl-loop with (_element properties . children) = node
-                                        for (name property) in
-                                        (list (list 'label #'node-label)
-                                              (list 'fillcolor #'node-color)
-                                              (list 'href #'node-href)
-					      (list 'shape #'node-shape)
-                                              (list 'style #'node-style)
-                                              (list 'color #'node-pencolor)
-                                              (list 'fontcolor #'node-fontcolor)
-                                              (list 'penwidth #'node-penwidth))
-                                        collect (cl-typecase property
-                                                  (keyword (cons name (->> (plist-get properties property)
-									   (org-link-display-format)
-									   (s-replace "\"" "\\\"")
-                                                                           (s-word-wrap 25))))
-                                                  (function (cons name (funcall property node)))
-                                                  (string (cons name property))
-                                                  (symbol (cons name (symbol-value property))))))
-	      (node-label (node)
-			  (-let* (((_element (&plist :raw-value) . _children) node))
-                            (s-word-wrap 25 (s-replace "\"" "\\\"" (org-link-display-format raw-value)))))
-              (node-href (node)
-                         (-let* (((_element (properties &as &plist :begin) . _children) node))
-                           (format "%s" begin)))
-	      (node-shape (node)
-			  (-let* (((_element (&plist :todo-type) . children) node))
-			    (pcase-exhaustive children
-                              ('nil (pcase todo-type
-                                      ('nil org-graph-view-shape-done)
-
-                                      (_ org-graph-view-shape-todo)))
-                              (_ org-graph-view-shape-default))))
-              (node-style (node)
-			  (-let* (((_element _properties . children) node))
-			    (pcase children
-                              ('nil "solid")
-                              (_ "filled"))))
-              (node-color (node)
-                          (-let* (((_element (&plist :level :todo-type) . _children) node))
-                            (pcase todo-type
-                              ('nil (level-color level))
-                              ('todo (level-color level))
-                              ('done (level-color level)))))
-              (node-fontcolor (node)
-                              (-let* (((_element (&plist :level) . children) node))
-                                (pcase children
-                                  ('nil (level-color level))
-                                  (_ (face-attribute 'default :background)))))
-              (level-color (level)
-                           (color-name-to-hex
-                            (face-attribute (nth (1- level) org-level-faces)
-                                            :foreground nil 'default)))
-              (color-name-to-hex (color)
-                                 (-let (((r g b) (color-name-to-rgb color)))
-                                   (color-rgb-to-hex r g b 2)) )
-              (node-pencolor (node)
-                             (-let* (((_element (&plist :level :todo-type) . _children) node))
-                               (pcase todo-type
-                                 ('nil (level-color level))
-                                 ('todo (color-name-to-hex (face-attribute 'org-todo :foreground nil 'default)))
-                                 ('done (level-color level)))))
-              (node-penwidth (node)
-                             (-let* (((_element (&plist :todo-type) . _children) node))
-                               (pcase todo-type
-                                 ('nil "1")
-                                 ('todo "2")
-                                 ('done "0.5"))))
-              (insert-vals (&rest pairs)
-                           (cl-loop for (key value) on pairs by #'cddr
-                                    do (insert (format "%s=\"%s\"" key value) "\n")))
-              (format-val-list (&rest pairs)
-                               (s-wrap (s-join "," (cl-loop for (key value) on pairs by #'cddr
-                                                            collect (format "%s=\"%s\"" key value)))
-                                       "[" "]")))
+  (substlet ((level-color (level)
+                          (color-name-to-hex
+                           (face-attribute (nth (1- level) org-level-faces)
+                                           :foreground nil 'default)))
+             (label (node)
+                    (-let* (((_element (&plist :raw-value) . _children) node))
+                      (s-word-wrap 25 (s-replace "\"" "\\\"" (org-link-display-format raw-value)))))
+             (href (node)
+                   (-let* (((_element (properties &as &plist :begin) . _children) node))
+                     (format "%s" begin)))
+             (shape (node)
+                    (-let* (((_element (&plist :todo-type) . children) node))
+                      (pcase-exhaustive children
+                        ('nil (pcase todo-type
+                                ('nil org-graph-view-shape-done)
+                                (_ org-graph-view-shape-todo)))
+                        (_ org-graph-view-shape-default))))
+             (style (node)
+                    (-let* (((_element _properties . children) node))
+                      (pcase children
+                        ('nil "solid")
+                        (_ "filled"))))
+             (color (node)
+                    (-let* (((_element (&plist :level :todo-type) . _children) node))
+                      (pcase todo-type
+                        ('nil (level-color level))
+                        ('todo (level-color level))
+                        ('done (level-color level)))))
+             (fontcolor (node)
+                        (-let* (((_element (&plist :level) . children) node))
+                          (pcase children
+                            ('nil (level-color level))
+                            (_ (face-attribute 'default :background)))))
+             (color-name-to-hex (color)
+                                (-let (((r g b) (color-name-to-rgb color)))
+                                  (color-rgb-to-hex r g b 2)) )
+             (pencolor (node)
+                       (-let* (((_element (&plist :level :todo-type) . _children) node))
+                         (pcase todo-type
+                           ('nil (level-color level))
+                           ('todo (color-name-to-hex (face-attribute 'org-todo :foreground nil 'default)))
+                           ('done (level-color level)))))
+             (penwidth (node)
+                       (-let* (((_element (&plist :todo-type) . _children) node))
+                         (pcase todo-type
+                           ('nil "1")
+                           ('todo "2")
+                           ('done "0.5"))))
+             (insert-vals (&rest pairs)
+                          (cl-loop for (key value) on pairs by #'cddr
+                                   do (insert (format "%s=\"%s\";" key value) "\n")))
+             (format-val-list (&rest pairs)
+                              (s-wrap (s-join "," (cl-loop for (key value) on pairs by #'cddr
+                                                           collect (format "%s=\"%s\"" key value)))
+                                      "[" "]"))
+             (node-properties (node)
+                              (list (cons 'label (label node))
+                                    (cons 'fillcolor (color node))
+                                    (cons 'href (href node))
+                                    (cons 'shape (shape node))
+                                    (cons 'style (style node))
+                                    (cons 'color (pencolor node))
+                                    (cons 'fontcolor (fontcolor node))
+                                    (cons 'penwidth (penwidth node)))))
     (let ((root-node-name (car (gethash root-node-pos nodes))))
       (with-temp-buffer
         (save-excursion
           (insert "digraph orggraphview {\n")
           (insert "edge" (format-val-list "color" (face-attribute 'default :foreground)) ";\n")
           (insert "node" (format-val-list "fontname" (face-attribute 'default :family)
-					  "nodesep" "1"
-					  "mindist" "1"
-					  )
-		  ";\n")
+                                          "nodesep" "1"
+                                          "mindist" "1"
+                                          )
+                  ";\n")
           (insert-vals "layout" layout
                        "bgcolor" (face-attribute 'default :background)
                        "size" (format "%.1d,%.1d" width-in height-in)
                        ;; NOTE: dpi doesn't seem to be present in my version of Graphviz;
                        ;; or, at least, setting it seems to cause invalid output.
                        ;;  "dpi" (format "%s" dpi)
-		       "overlap" org-graph-view-overlap
+                       "overlap" org-graph-view-overlap
                        "margin" "0"
                        "ratio" "fill"
                        "nodesep" "0"
