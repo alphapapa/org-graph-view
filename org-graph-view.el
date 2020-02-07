@@ -49,6 +49,7 @@
     (define-key map [mouse-1] #'org-graph-view-jump-from-graph)
     (define-key map [mouse-2] #'org-graph-view-zoom-in-from-graph)
     (define-key map [mouse-3] #'org-graph-view-zoom-out-from-graph)
+    (define-key map [mouse-4] #'org-graph-view-image-zoom-in)
     map)
   "Keymap.")
 
@@ -293,6 +294,41 @@ keywords are supported:
              (org-narrow-to-subtree))
             (t (goto-char (point-min))))
       (call-interactively #'org-graph-view))))
+
+(defun org-graph-view-zoom-out-from-graph (event)
+  (interactive "e")
+  (-let* (((_type position _count) event)
+          ((_window pos-or-area (_x . _y) _timestamp
+                    _object _text-pos . (_ (_image . (&plist :source-buffer))))
+           position)
+          (begin (cl-typecase pos-or-area
+                   (string (string-to-number pos-or-area))
+                   (number pos-or-area))))
+    (when source-buffer
+      (pop-to-buffer source-buffer)
+      (widen)
+      (goto-char begin)
+      (cond ((org-up-heading-safe)
+             (org-narrow-to-subtree))
+            (t (goto-char (point-min))))
+      (call-interactively #'org-graph-view))))
+
+(defun org-graph-view-image-zoom-in (event)
+  (interactive "e")
+  (-let* (((_type position _count) event)
+          ((window pos-or-area (_x . _y) _timestamp
+                   _object _text-pos . (_ image ;; (image . image-properties)
+                                          ))
+           position)
+          (image-without-parameters (image--image-without-parameters image)))
+    (setf (image-property image-without-parameters :type) 'imagemagick
+          (image-property image-without-parameters :scale) (* (image-property image :scale) 1.2)
+          image image-without-parameters)
+    (image-flush image-without-parameters)
+    ;; (with-selected-window window
+    ;;   (goto-char pos-or-area)
+    ;;   (image-increase-size 2))
+    ))
 
 ;;;; Functions
 
