@@ -474,7 +474,7 @@ commands can find the buffer."
     (insert graph)
     (org-graph-view--graphviz "svg"
       (debug-warn (buffer-string))
-      (let* ((image (svg-image (libxml-parse-xml-region (point-min) (point-max)))))
+      (let* ((image (apply #'create-image (buffer-string) 'svg t nil)))
         (setf (image-property image :map) map)
         (setf (image-property image :source-buffer) source-buffer)
         image))))
