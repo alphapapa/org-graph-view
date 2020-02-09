@@ -28,11 +28,15 @@
 ;;;; Requirements
 
 (require 'cl-lib)
+(require 'color)
+(require 'map)
 (require 'org)
 (require 'subr-x)
 (require 'svg)
+(require 'warnings) ;; FIXME: Remove when not needed.
 
 (require 'dash)
+(require 's)
 
 ;;;; Variables
 
