@@ -470,6 +470,18 @@ commands can find the buffer."
     (insert graph)
     (org-graph-view--graphviz "svg"
       ;; (debug-warn (buffer-string))
+      (save-excursion
+	;; HACK: Remove "pt" units from SVG width and height.  See
+	;; <https://gitlab.com/graphviz/graphviz/-/issues/867>.
+	;; Although it doesn't seem to fix the problem, so some
+	;; combinations of window and graph sizes still render parts (or
+	;; most) of the SVG off-screen.  *sigh*
+	(goto-char (point-min))
+	(when (re-search-forward (rx "<svg width=\"" (group (1+ (not (any "\"")))) "\" "
+				     "height=\"" (group (1+ (not (any "\"")))) "\"")
+				 nil t)
+	  (replace-match (substring (match-string 1) nil -2) t t nil 1)
+	  (replace-match (substring (match-string 2) nil -2) t t nil 2)))
       (let* ((image (apply #'create-image (buffer-string) 'svg t nil)))
         (setf (image-property image :map) map)
         (setf (image-property image :source-buffer) source-buffer)
