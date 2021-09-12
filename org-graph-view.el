@@ -190,7 +190,6 @@ keywords are supported:
             (graphviz (org-graph-view--format-graph graph nodes root-node-pos :layout layout
                                                     :width-in width-in :height-in height-in
                                                     ;; Average the two resolutions.
-                                                    ;; NOTE: Not used at the moment.  See later comment.
                                                     :dpi (/ (+ width-res height-res) 2)))
             (image-map (org-graph-view--graph-map graphviz))
             (svg-image (org-graph-view--svg graphviz :map image-map :source-buffer (current-buffer)))
@@ -330,7 +329,7 @@ keywords are supported:
 	      nodes)))))
 
 (cl-defun org-graph-view--format-graph (graph nodes root-node-pos
-                                              &key layout width-in height-in _dpi)
+                                              &key layout width-in height-in dpi)
   "Return Graphviz string for GRAPH and NODES viewed from ROOT-NODE-POS."
   (cl-labels ((node-properties (node)
                                (cl-loop with (_element properties . children) = node
@@ -420,9 +419,10 @@ keywords are supported:
           (insert-vals "layout" layout
                        "bgcolor" (face-attribute 'default :background)
                        "size" (format "%.1d,%.1d" width-in height-in)
-                       ;; NOTE: dpi doesn't seem to be present in my version of Graphviz;
-                       ;; or, at least, setting it seems to cause invalid output.
-                       ;;  "dpi" (format "%s" dpi)
+                       ;; NOTE: The dpi setting is important, because
+                       ;; without it, sometimes cmap areas don't align
+                       ;; with the rendered elements.
+                       "dpi" (format "%s" dpi)
 		       "overlap" org-graph-view-overlap
                        "margin" "0"
                        "ratio" "fill"
