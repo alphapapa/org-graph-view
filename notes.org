@@ -1,5 +1,15 @@
 #+TITLE: Notes on org-graph-view
 
+* Issues
+
+** SVG output sometimes rendered unusably
+
+[2021-09-12 Sun 14:26]  Certain combinations of Graphviz settings and graph sizes don't render well, e.g. the SVG =viewBox= is the wrong size, nodes are cropped, the image doesn't fill the requested dimensions, nodes are too far apart, etc.  Try as I might, even hacking the SVG width/height and viewBox manually, I can't find a reliable way to fix it.  And there may be some Graphviz bugs involved, such as [[https://gitlab.com/graphviz/graphviz/-/issues/867][this one]].  And considering the number of factors involved (just in Graphviz, there are things like width, height, DPI, margin, nodesep, ratio, layout engines with varying output, etc), there may be hundreds or thousands of combinations to account for, which doesn't seem practical.
+
+Unfortunately, unless this can be resolved, the package won't be very reliable, so it would be hard to justify publishing it for random users to try.
+
+If Emacs ever gains zoomable/pannable image rendering, this might be solvable, because then SVG output could be easily manipulated by the viewer.  Until then, I guess this is why Org Roam outsources SVG rendering to a browser.
+
 * References / Prior Art
 
 ** [[http://pages.sachachua.com/evil-plans/][Sacha Chua's "evil plans"]]
