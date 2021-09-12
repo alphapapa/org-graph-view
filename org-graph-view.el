@@ -69,11 +69,15 @@
   "Render nodes this many levels deep."
   :type 'integer)
 
-(defcustom org-graph-view-overlap "true"
-  "How to handle overlapping.  See Graphviz documentation."
-  :type '(choice (const :tag "Voronoi" "false")
+(defcustom org-graph-view-overlap "voronoi"
+  "How to handle overlapping.  See Graphviz documentation.
+It seems unclear which is the best default, because each option
+renders one or another layout slightly better than other
+options."
+  :type '(choice (const :tag "Voronoi" "voronoi")
 		 (const :tag "Scale" "scale")
-		 (const :tag "Allow overlap" "true")))
+		 (const :tag "Allow overlap" "true")
+		 (const :tag "VPSC" "vpsc")))
 
 (defcustom org-graph-view-shape-default "oval"
   "Shape for non-to-do nodes.  See Graphviz documentation."
