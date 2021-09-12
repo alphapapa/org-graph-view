@@ -331,62 +331,62 @@ keywords are supported:
 (cl-defun org-graph-view--format-graph (graph nodes root-node-pos
                                               &key layout width-in height-in dpi)
   "Return Graphviz string for GRAPH and NODES viewed from ROOT-NODE-POS."
-  (cl-labels ((node-properties (node)
-                               (cl-loop with (_element properties . children) = node
-                                        for (name property) in
-                                        (list (list 'label #'node-label)
-                                              (list 'fillcolor #'node-color)
-                                              (list 'href #'node-href)
-					      (list 'shape #'node-shape)
-                                              (list 'style #'node-style)
-                                              (list 'color #'node-pencolor)
-                                              (list 'fontcolor #'node-fontcolor)
-                                              (list 'penwidth #'node-penwidth))
-                                        collect (cl-typecase property
-                                                  (keyword (cons name (->> (plist-get properties property)
-									   (org-link-display-format)
-									   (s-replace "\"" "\\\"")
-                                                                           (s-word-wrap 25))))
-                                                  (function (cons name (funcall property node)))
-                                                  (string (cons name property))
-                                                  (symbol (cons name (symbol-value property))))))
-	      (node-label (node)
-			  (-let* (((_element (&plist :raw-value) . _children) node))
-                            (s-word-wrap 25 (s-replace "\"" "\\\"" (org-link-display-format raw-value)))))
-              (node-href (node)
-                         (-let* (((_element (properties &as &plist :begin) . _children) node))
-                           (format "%s" begin)))
-	      (node-shape (node)
-			  (-let* (((_element (&plist :todo-type) . children) node))
-			    (pcase-exhaustive children
-                              ('nil (pcase todo-type
-                                      ('nil org-graph-view-shape-done)
+  (cl-labels ((node-properties
+	       (node) (cl-loop with (_element properties . children) = node
+			       for (name property) in
+			       (list (list 'label #'node-label)
+				     (list 'fillcolor #'node-color)
+				     (list 'href #'node-href)
+				     (list 'shape #'node-shape)
+				     (list 'style #'node-style)
+				     (list 'color #'node-pencolor)
+				     (list 'fontcolor #'node-fontcolor)
+				     (list 'penwidth #'node-penwidth))
+			       collect (cl-typecase property
+					 (keyword (cons name (->> (plist-get properties property)
+								  (org-link-display-format)
+								  (s-replace "\"" "\\\"")
+								  (s-word-wrap 25))))
+					 (function (cons name (funcall property node)))
+					 (string (cons name property))
+					 (symbol (cons name (symbol-value property))))))
+	      (node-label
+	       (node) (-let* (((_element (&plist :raw-value) . _children) node))
+			(s-word-wrap 25 (s-replace "\"" "\\\"" (org-link-display-format raw-value)))))
+              (node-href
+	       (node) (-let* (((_element (properties &as &plist :begin) . _children) node))
+			(format "%s" begin)))
+	      (node-shape
+	       (node) (-let* (((_element (&plist :todo-type) . children) node))
+			(pcase-exhaustive children
+			  ('nil (pcase todo-type
+				  ('nil org-graph-view-shape-done)
 
-                                      (_ org-graph-view-shape-todo)))
-                              (_ org-graph-view-shape-default))))
-              (node-style (node)
-			  (-let* (((_element _properties . children) node))
-			    (pcase children
-                              ('nil "solid")
-                              (_ "filled"))))
-              (node-color (node)
-                          (-let* (((_element (&plist :level :todo-type) . _children) node))
-                            (pcase todo-type
-                              ('nil (level-color level))
-                              ('todo (level-color level))
-                              ('done (level-color level)))))
-              (node-fontcolor (node)
-                              (-let* (((_element (&plist :level) . children) node))
-                                (pcase children
-                                  ('nil (level-color level))
-                                  (_ (face-attribute 'default :background)))))
-              (level-color (level)
-                           (color-name-to-hex
-                            (face-attribute (nth (1- level) org-level-faces)
-                                            :foreground nil 'default)))
-              (color-name-to-hex (color)
-                                 (-let (((r g b) (color-name-to-rgb color)))
-                                   (color-rgb-to-hex r g b 2)) )
+				  (_ org-graph-view-shape-todo)))
+			  (_ org-graph-view-shape-default))))
+              (node-style
+	       (node) (-let* (((_element _properties . children) node))
+			(pcase children
+			  ('nil "solid")
+			  (_ "filled"))))
+              (node-color
+	       (node) (-let* (((_element (&plist :level :todo-type) . _children) node))
+			(pcase todo-type
+			  ('nil (level-color level))
+			  ('todo (level-color level))
+			  ('done (level-color level)))))
+              (node-fontcolor
+	       (node) (-let* (((_element (&plist :level) . children) node))
+			(pcase children
+			  ('nil (level-color level))
+			  (_ (face-attribute 'default :background)))))
+              (level-color
+	       (level) (color-name-to-hex
+			(face-attribute (nth (1- level) org-level-faces)
+					:foreground nil 'default)))
+              (color-name-to-hex
+	       (color) (-let (((r g b) (color-name-to-rgb color)))
+			 (color-rgb-to-hex r g b 2)) )
               (node-pencolor (node)
                              (-let* (((_element (&plist :level :todo-type) . _children) node))
                                (pcase todo-type
@@ -485,24 +485,25 @@ commands can find the buffer."
     (insert graph)
     (org-graph-view--graphviz "cmapx"
       (debug-warn (buffer-string))
-      (cl-labels ((convert-map (map)
-                               (-let (((_map _props . areas) map))
-                                 (mapcar #'convert-area areas)))
-                  (convert-area (area)
-                                (-let (((_area (&alist 'shape 'title 'href 'coords)) area))
-                                  (list (pcase-exhaustive shape
-                                          ("circle" (cons 'circle (convert-circle coords)))
-                                          ("poly" (cons 'poly (convert-poly coords)))
-                                          ("rect" (cons 'rect (convert-rect coords))))
-                                        href (list :help-echo title))))
-                  (convert-circle (coords)
-                                  (-let (((x y r) (->> coords (s-split ",") (-map #'string-to-number))))
-                                    (cons (cons x y) r)))
-                  (convert-poly (coords)
-                                (->> coords (s-split ",") (-map #'string-to-number) (apply #'vector)))
-                  (convert-rect (coords)
-                                (-let (((x0 y0 x1 y1) (->> coords (s-split ",") (-map #'string-to-number))))
-                                  (cons (cons x0 y0) (cons x1 y1)))))
+      (cl-labels ((convert-map
+		   (map) (-let (((_map _props . areas) map))
+			   (mapcar #'convert-area areas)))
+                  (convert-area
+		   (area) (-let (((_area (&alist 'shape 'title 'href 'coords)) area))
+			    (list (pcase-exhaustive shape
+				    ("circle" (cons 'circle (convert-circle coords)))
+				    ("poly" (cons 'poly (convert-poly coords)))
+				    ("rect" (cons 'rect (convert-rect coords))))
+				  href (list :help-echo title))))
+                  (convert-circle
+		   (coords) (-let (((x y r) (->> coords (s-split ",") (-map #'string-to-number))))
+			      (cons (cons x y) r)))
+                  (convert-poly
+		   (coords) (->> coords (s-split ",") (-map #'string-to-number) (apply #'vector)))
+                  (convert-rect
+		   (coords) (-let (((x0 y0 x1 y1)
+				    (->> coords (s-split ",") (-map #'string-to-number))))
+			      (cons (cons x0 y0) (cons x1 y1)))))
         (let* ((cmapx (libxml-parse-xml-region (point-min) (point-max))))
           (convert-map cmapx))))))
 
