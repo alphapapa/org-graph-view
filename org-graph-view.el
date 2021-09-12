@@ -157,9 +157,6 @@ keywords are supported:
   (interactive (pcase current-prefix-arg
                  ('nil (list org-graph-view-layout))
                  (_ (list (completing-read "Layout: " (cadadr (get 'org-graph-view-layout 'custom-type)))))))
-  (unless (and (fboundp 'imagemagick-types)
-               (member 'SVG (imagemagick-types)))
-    (error "This Emacs does not appear to be built with ImageMagick SVG support"))
   (cl-labels ((window-dimensions-in (&optional (window (selected-window)))
                                     ;; Return WINDOW (width-in height-in) in inches.
                                     (with-selected-window window
