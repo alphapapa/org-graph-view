@@ -101,48 +101,48 @@
 
 ;;;; Macros
 
-(cl-defmacro debug-warn (&rest args)
-  "Display a debug warning showing the runtime value of ARGS.
-The warning automatically includes the name of the containing
-function, and it is only displayed if `warning-minimum-log-level'
-is `:debug' at runtime (which avoids formatting messages that
-won't be shown).
+;; (cl-defmacro debug-warn (&rest args)
+;;   "Display a debug warning showing the runtime value of ARGS.
+;; The warning automatically includes the name of the containing
+;; function, and it is only displayed if `warning-minimum-log-level'
+;; is `:debug' at runtime (which avoids formatting messages that
+;; won't be shown).
 
-Each of ARGS may be a string, which is displayed as-is, or a
-symbol, the value of which is displayed prefixed by its name, or
-a Lisp form, which is displayed prefixed by its first symbol.
+;; Each of ARGS may be a string, which is displayed as-is, or a
+;; symbol, the value of which is displayed prefixed by its name, or
+;; a Lisp form, which is displayed prefixed by its first symbol.
 
-Before the actual ARGS arguments, you can write keyword
-arguments, i.e. alternating keywords and values.  The following
-keywords are supported:
+;; Before the actual ARGS arguments, you can write keyword
+;; arguments, i.e. alternating keywords and values.  The following
+;; keywords are supported:
 
-:buffer BUFFER   Name of buffer to pass to `display-warning'.
-:level  LEVEL    Level passed to `display-warning', which see.
-                 Default is :debug."
-  (pcase-let* ((fn-name (with-current-buffer
-                            (or byte-compile-current-buffer (current-buffer))
-                          ;; This is a hack, but a nifty one.
-                          (save-excursion
-                            (beginning-of-defun)
-                            (cl-second (read (current-buffer))))))
-               (plist-args (cl-loop while (keywordp (car args))
-                                    collect (pop args)
-                                    collect (pop args)))
-               ((map (:buffer buffer) (:level level)) plist-args)
-               (level (or level :debug))
-               (string (cl-loop for arg in args
-                                concat (pcase arg
-                                         ((pred stringp) "%S ")
-                                         ((pred symbolp)
-                                          (concat (upcase (symbol-name arg)) ":%S "))
-                                         ((pred listp)
-                                          (concat "(" (upcase (symbol-name (car arg)))
-                                                  (pcase (length arg)
-                                                    (1 ")")
-                                                    (_ "...)"))
-                                                  ":%S "))))))
-    `(when (eq :debug warning-minimum-log-level)
-       (display-warning ',fn-name (format ,string ,@args) ,level ,buffer))))
+;; :buffer BUFFER   Name of buffer to pass to `display-warning'.
+;; :level  LEVEL    Level passed to `display-warning', which see.
+;;                  Default is :debug."
+;;   (pcase-let* ((fn-name (with-current-buffer
+;;                             (or byte-compile-current-buffer (current-buffer))
+;;                           ;; This is a hack, but a nifty one.
+;;                           (save-excursion
+;;                             (beginning-of-defun)
+;;                             (cl-second (read (current-buffer))))))
+;;                (plist-args (cl-loop while (keywordp (car args))
+;;                                     collect (pop args)
+;;                                     collect (pop args)))
+;;                ((map (:buffer buffer) (:level level)) plist-args)
+;;                (level (or level :debug))
+;;                (string (cl-loop for arg in args
+;;                                 concat (pcase arg
+;;                                          ((pred stringp) "%S ")
+;;                                          ((pred symbolp)
+;;                                           (concat (upcase (symbol-name arg)) ":%S "))
+;;                                          ((pred listp)
+;;                                           (concat "(" (upcase (symbol-name (car arg)))
+;;                                                   (pcase (length arg)
+;;                                                     (1 ")")
+;;                                                     (_ "...)"))
+;;                                                   ":%S "))))))
+;;     `(when (eq :debug warning-minimum-log-level)
+;;        (display-warning ',fn-name (format ,string ,@args) ,level ,buffer))))
 
 ;;;; Commands
 
@@ -410,8 +410,7 @@ keywords are supported:
           (insert "edge" (format-val-list "color" (face-attribute 'default :foreground)) ";\n")
           (insert "node" (format-val-list "fontname" (face-attribute 'default :family)
 					  "nodesep" "1"
-					  "mindist" "1"
-					  )
+					  "mindist" "1")
 		  ";\n")
           (insert-vals "layout" layout
                        "bgcolor" (face-attribute 'default :background)
@@ -434,7 +433,7 @@ keywords are supported:
                    nodes)
           (insert (format "root=\"%s\"" root-node-name))
           (insert "}"))
-        (debug-warn (buffer-string))
+        ;; (debug-warn (buffer-string))
         (buffer-string)))))
 
 (defun org-graph-view-buffer ()
@@ -470,7 +469,7 @@ commands can find the buffer."
   (with-temp-buffer
     (insert graph)
     (org-graph-view--graphviz "svg"
-      (debug-warn (buffer-string))
+      ;; (debug-warn (buffer-string))
       (let* ((image (apply #'create-image (buffer-string) 'svg t nil)))
         (setf (image-property image :map) map)
         (setf (image-property image :source-buffer) source-buffer)
@@ -481,7 +480,7 @@ commands can find the buffer."
   (with-temp-buffer
     (insert graph)
     (org-graph-view--graphviz "cmapx"
-      (debug-warn (buffer-string))
+      ;; (debug-warn (buffer-string))
       (cl-labels ((convert-map
 		   (map) (-let (((_map _props . areas) map))
 			   (mapcar #'convert-area areas)))
