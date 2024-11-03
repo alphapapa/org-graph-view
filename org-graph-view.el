@@ -167,24 +167,25 @@ options."
 
 ;;;###autoload
 (cl-defun org-graph-view (layout)
-  (interactive (pcase current-prefix-arg
-                 ('nil (list org-graph-view-layout))
-                 (_ (list (completing-read "Layout: " (cadadr (get 'org-graph-view-layout 'custom-type)))))))
+  (interactive
+   (pcase current-prefix-arg
+     ('nil (list org-graph-view-layout))
+     (_ (list (completing-read "Layout: " (cadadr (get 'org-graph-view-layout 'custom-type)))))))
   (cl-labels ((window-dimensions-in (&optional (window (selected-window)))
-                                    ;; Return WINDOW (width-in height-in) in inches.
-                                    (with-selected-window window
-                                      (-let* (((&alist 'geometry (_ _ monitor-width-px monitor-height-px)
-                                                       'mm-size (monitor-width-mm monitor-height-mm))
-                                               ;; TODO: Ensure we get the monitor the frame is on.
-                                               (car (display-monitor-attributes-list)))
-                                              (monitor-width-in (mm-in monitor-width-mm))
-                                              (monitor-height-in (mm-in monitor-height-mm))
-                                              (monitor-width-res (/ monitor-width-px monitor-width-in))
-                                              (monitor-height-res (/ monitor-height-px monitor-height-in))
-                                              (window-width-in (/  (window-text-width nil t) monitor-width-res))
-                                              (window-height-in (/ (window-text-height nil t) monitor-height-res)))
-                                        (list window-width-in window-height-in
-                                              monitor-width-res monitor-height-res))))
+                ;; Return WINDOW (width-in height-in) in inches.
+                (with-selected-window window
+                  (-let* (((&alist 'geometry (_ _ monitor-width-px monitor-height-px)
+                                   'mm-size (monitor-width-mm monitor-height-mm))
+                           ;; TODO: Ensure we get the monitor the frame is on.
+                           (car (display-monitor-attributes-list)))
+                          (monitor-width-in (mm-in monitor-width-mm))
+                          (monitor-height-in (mm-in monitor-height-mm))
+                          (monitor-width-res (/ monitor-width-px monitor-width-in))
+                          (monitor-height-res (/ monitor-height-px monitor-height-in))
+                          (window-width-in (/  (window-text-width nil t) monitor-width-res))
+                          (window-height-in (/ (window-text-height nil t) monitor-height-res)))
+                    (list window-width-in window-height-in
+                          monitor-width-res monitor-height-res))))
               (mm-in (mm) (* mm 0.04)))
     (-let* ((graph-buffer (org-graph-view-buffer))
             ((width-in height-in width-res height-res)
@@ -201,13 +202,18 @@ options."
                                                     :width-in width-in :height-in height-in
                                                     ;; Average the two resolutions.
                                                     :dpi (/ (+ width-res height-res) 2)))
+            (_ (with-temp-file "/tmp/org-graph-view.dot"
+                 (insert graphviz)))
             (image-map (org-graph-view--graph-map graphviz))
             (svg-image (org-graph-view--svg graphviz :map image-map :source-buffer (current-buffer)))
             (inhibit-read-only t))
+      (with-temp-file "/tmp/org-graph-view.svg"
+        (insert (image-property svg-image :data)))
       (with-current-buffer graph-buffer
         (erase-buffer)
         (insert-image svg-image)
-        (pop-to-buffer graph-buffer)))))
+        (pop-to-buffer graph-buffer)
+        (image-minor-mode)))))
 
 (defun org-graph-view-jump (event)
   (interactive "e")
@@ -313,26 +319,26 @@ options."
   "Return (graph nodes) for BUFFER."
   (let ((nodes (make-hash-table :test #'equal)))
     (cl-labels ((format-tree (tree depth &optional path)
-                             (--map (format-node it depth path)
-                                    (cddr tree)))
+                  (--map (format-node it depth path)
+                         (cddr tree)))
                 (format-node (node depth &optional path)
-			     (when (> depth 0)
-			       (-let* (((_element _properties . children) node)
-				       (path (append path (list node))))
-				 (if children
-                                     (list (--map (concat (node-id node) " -> " (node-id it) ";\n")
-                                                  children)
-                                           (--map (format-node it (1- depth) path)
-                                                  children))
-                                   (concat (node-id node) ";\n")
-                                   ))))
+		  (when (> depth 0)
+		    (-let* (((_element _properties . children) node)
+			    (path (append path (list node))))
+		      (if children
+                          (list (--map (concat (node-id node) " -> " (node-id it) ";\n")
+                                       children)
+                                (--map (format-node it (1- depth) path)
+                                       children))
+                        (concat (node-id node) ";\n")
+                        ))))
                 (node-id (node)
-                         (-let* (((_element (properties &as &plist :begin) . _children) node))
-                           (or (car (gethash begin nodes))
-                               (let* ((node-id (format "node%s" begin))
-                                      (value (cons node-id node)))
-                                 (puthash begin value nodes)
-                                 node-id)))))
+                  (-let* (((_element (properties &as &plist :begin) . _children) node))
+                    (or (car (gethash begin nodes))
+                        (let* ((node-id (format "node%s" begin))
+                               (value (cons node-id node)))
+                          (puthash begin value nodes)
+                          node-id)))))
       (with-current-buffer buffer
         (list (format-tree (org-element-parse-buffer 'headline)
 			   (+ org-graph-view-depth (1- (or (org-current-level) 1))))
@@ -342,112 +348,113 @@ options."
                                               &key layout width-in height-in dpi)
   "Return Graphviz string for GRAPH and NODES viewed from ROOT-NODE-POS."
   (cl-labels ((node-properties
-	       (node) (cl-loop with (_element properties . children) = node
-			       for (name property) in
-			       (list (list 'label #'node-label)
-				     (list 'fillcolor #'node-color)
-				     (list 'href #'node-href)
-				     (list 'shape #'node-shape)
-				     (list 'style #'node-style)
-				     (list 'color #'node-pencolor)
-				     (list 'fontcolor #'node-fontcolor)
-				     (list 'penwidth #'node-penwidth))
-			       collect (cl-typecase property
-					 (keyword (cons name (->> (plist-get properties property)
-								  (org-link-display-format)
-								  (s-replace "\"" "\\\"")
-								  (s-word-wrap 25))))
-					 (function (cons name (funcall property node)))
-					 (string (cons name property))
-					 (symbol (cons name (symbol-value property))))))
+	        (node) (cl-loop with (_element properties . children) = node
+			        for (name property) in
+			        (list (list 'label #'node-label)
+				      (list 'fillcolor #'node-color)
+				      (list 'href #'node-href)
+				      (list 'shape #'node-shape)
+				      (list 'style #'node-style)
+				      (list 'color #'node-pencolor)
+				      (list 'fontcolor #'node-fontcolor)
+				      (list 'penwidth #'node-penwidth))
+			        collect (cl-typecase property
+					  (keyword (cons name (->> (plist-get properties property)
+								   (org-link-display-format)
+								   (s-replace "\"" "\\\"")
+								   (s-word-wrap 25))))
+					  (function (cons name (funcall property node)))
+					  (string (cons name property))
+					  (symbol (cons name (symbol-value property))))))
 	      (node-label
-	       (node) (-let* (((_element (&plist :raw-value) . _children) node))
-			(s-word-wrap 25 (s-replace "\"" "\\\"" (org-link-display-format raw-value)))))
+	        (node) (-let* (((_element (&plist :raw-value) . _children) node))
+			 (s-word-wrap 25 (s-replace "\"" "\\\"" (org-link-display-format raw-value)))))
               (node-href
-	       (node) (-let* (((_element (properties &as &plist :begin) . _children) node))
-			(format "%s" begin)))
+	        (node) (-let* (((_element (properties &as &plist :begin) . _children) node))
+			 (format "%s" begin)))
 	      (node-shape
-	       (node) (-let* (((_element (&plist :todo-type) . children) node))
-			(pcase-exhaustive children
-			  ('nil (pcase todo-type
-				  ('nil org-graph-view-shape-done)
+	        (node) (-let* (((_element (&plist :todo-type) . children) node))
+			 (pcase-exhaustive children
+			   ('nil (pcase todo-type
+				   ('nil org-graph-view-shape-done)
 
-				  (_ org-graph-view-shape-todo)))
-			  (_ org-graph-view-shape-default))))
+				   (_ org-graph-view-shape-todo)))
+			   (_ org-graph-view-shape-default))))
               (node-style
-	       (node) (-let* (((_element (&plist :begin) . children) node)
-			      (base-style (pcase children
-					    ('nil "solid")
-					    (_ "filled")))
-			      (selection-style (when (equal root-node-pos begin)
-						 "bold")))
-			(string-join (delq nil
-					   (list base-style selection-style))
-				     ",")))
+	        (node) (-let* (((_element (&plist :begin) . children) node)
+			       (base-style (pcase children
+					     ('nil "solid")
+					     (_ "filled")))
+			       (selection-style (when (equal root-node-pos begin)
+						  "bold")))
+			 (string-join (delq nil
+					    (list base-style selection-style))
+				      ",")))
               (node-color
-	       (node) (-let* (((_element (&plist :level :todo-type) . _children) node))
-			(pcase todo-type
-			  ('nil (level-color level))
-			  ('todo (level-color level))
-			  ('done (level-color level)))))
+	        (node) (-let* (((_element (&plist :level :todo-type) . _children) node))
+			 (pcase todo-type
+			   ('nil (level-color level))
+			   ('todo (level-color level))
+			   ('done (level-color level)))))
               (node-fontcolor
-	       (node) (-let* (((_element (&plist :level :begin) . children) node))
-			(pcase children
-			  ('nil (level-color level))
-			  (_ (if (equal begin root-node-pos)
-				 (if (face-attribute 'org-graph-view-selected :inverse-video)
-				     (face-attribute 'org-graph-view-selected :background nil 'default)
-				   (face-attribute 'org-graph-view-selected :foreground nil 'default))
-			       (face-attribute 'default :background))))))
+	        (node) (-let* (((_element (&plist :level :begin) . children) node))
+			 (pcase children
+			   ('nil (level-color level))
+			   (_ (if (equal begin root-node-pos)
+				  (if (face-attribute 'org-graph-view-selected :inverse-video)
+				      (face-attribute 'org-graph-view-selected :background nil 'default)
+				    (face-attribute 'org-graph-view-selected :foreground nil 'default))
+			        (face-attribute 'default :background))))))
               (level-color
-	       (level) (color-name-to-hex
-			(face-attribute (or (nth (1- level) org-level-faces) 'default)
-					:foreground nil 'default)))
+	        (level) (color-name-to-hex
+			 (face-attribute (or (nth (1- level) org-level-faces) 'default)
+					 :foreground nil 'default)))
               (color-name-to-hex
-	       (color) (-let (((r g b) (color-name-to-rgb color)))
-			 (color-rgb-to-hex r g b 2)) )
+	        (color) (-let (((r g b) (color-name-to-rgb color)))
+			  (color-rgb-to-hex r g b 2)) )
               (node-pencolor (node)
-                             (-let* (((_element (&plist :level :todo-type :begin) . _children) node))
-                               (pcase todo-type
-                                 ('nil (if (equal root-node-pos begin)
-					   (face-attribute 'org-graph-view-selected :background nil 'default)
-					 (level-color level)))
-                                 ('todo (color-name-to-hex (face-attribute 'org-todo :foreground nil 'default)))
-                                 ('done (level-color level)))))
+                (-let* (((_element (&plist :level :todo-type :begin) . _children) node))
+                  (pcase todo-type
+                    ('nil (if (equal root-node-pos begin)
+			      (face-attribute 'org-graph-view-selected :background nil 'default)
+			    (level-color level)))
+                    ('todo (color-name-to-hex (face-attribute 'org-todo :foreground nil 'default)))
+                    ('done (level-color level)))))
               (node-penwidth (node)
-                             (-let* (((_element (&plist :todo-type) . _children) node))
-                               (pcase todo-type
-                                 ('nil "1")
-                                 ('todo "2")
-                                 ('done "0.5"))))
+                (-let* (((_element (&plist :todo-type) . _children) node))
+                  (pcase todo-type
+                    ('nil "1")
+                    ('todo "2")
+                    ('done "0.5"))))
               (insert-vals (&rest pairs)
-                           (cl-loop for (key value) on pairs by #'cddr
-                                    do (insert (format "%s=\"%s\"" key value) "\n")))
+                (cl-loop for (key value) on pairs by #'cddr
+                         do (insert (format "%s=\"%s\"" key value) "\n")))
               (format-val-list (&rest pairs)
-                               (s-wrap (s-join "," (cl-loop for (key value) on pairs by #'cddr
-                                                            collect (format "%s=\"%s\"" key value)))
-                                       "[" "]")))
+                (s-wrap (s-join "," (cl-loop for (key value) on pairs by #'cddr
+                                             collect (format "%s=\"%s\"" key value)))
+                        "[" "]")))
     (let ((root-node-name (car (gethash root-node-pos nodes))))
       (with-temp-buffer
         (save-excursion
           (insert "digraph orggraphview {\n")
+          (insert "graph" (format-val-list "layout" layout
+                                           "bgcolor" (face-attribute 'default :background)
+                                           "size" (format "%.1din,%.1din!" width-in height-in)
+                                           ;; NOTE: The dpi setting is important, because
+                                           ;; without it, sometimes cmap areas don't align
+                                           ;; with the rendered elements.
+                                           "dpi" (format "%s" dpi)
+		                           "overlap" org-graph-view-overlap
+                                           "margin" "0"
+                                           "ratio" "fill"
+                                           "nodesep" "0"
+                                           "mindist" "0")
+                  ";\n")
           (insert "edge" (format-val-list "color" (face-attribute 'default :foreground)) ";\n")
           (insert "node" (format-val-list "fontname" (face-attribute 'default :family)
 					  "nodesep" "1"
 					  "mindist" "1")
 		  ";\n")
-          (insert-vals "layout" layout
-                       "bgcolor" (face-attribute 'default :background)
-                       "size" (format "%.1d,%.1d" width-in height-in)
-                       ;; NOTE: The dpi setting is important, because
-                       ;; without it, sometimes cmap areas don't align
-                       ;; with the rendered elements.
-                       "dpi" (format "%s" dpi)
-		       "overlap" org-graph-view-overlap
-                       "margin" "0"
-                       "ratio" "fill"
-                       "nodesep" "0"
-                       "mindist" "0")
           (mapc #'insert (-flatten graph))
           (maphash (lambda (_key value)
                      (insert (format "%s [%s];\n" (car value)
@@ -501,11 +508,44 @@ commands can find the buffer."
 	;; combinations of window and graph sizes still render parts (or
 	;; most) of the SVG off-screen.  *sigh*
 	(goto-char (point-min))
-	(when (re-search-forward (rx "<svg width=\"" (group (1+ (not (any "\"")))) "\" "
-				     "height=\"" (group (1+ (not (any "\"")))) "\"")
-				 nil t)
-	  (replace-match (substring (match-string 1) nil -2) t t nil 1)
-	  (replace-match (substring (match-string 2) nil -2) t t nil 2)))
+	;; (when (re-search-forward (rx "<svg width=\"" (group (1+ (not (any "\"")))) "\" "
+	;;                              "height=\"" (group (1+ (not (any "\"")))) "\"")
+	;;                          nil t)
+	;;   (replace-match  (substring (match-string 1) nil -2)
+        ;;                   t t nil 1)
+	;;   (replace-match (substring (match-string 2) nil -2)
+        ;;                  t t nil 2))
+        )
+      (save-excursion
+        ;; HACK: Set SVG viewBox width/height to match the SVG
+        ;; width/height.  This is the only way I've found to fix the
+        ;; problem of the graph rendering outside the viewport and/or
+        ;; the Emacs window.  I don't know why Graphviz is setting the
+        ;; viewBox smaller than the image, but this workaround seems
+        ;; like it will have to do for now.
+        (goto-char (point-min))
+        (if (re-search-forward (rx "<svg width=\"" (group (1+ (not (any "\"")))) "\" "
+	                           "height=\"" (group (1+ (not (any "\"")))) "\"")
+	                       nil t)
+            (let ((width (match-string 1))
+                  (height (match-string 2)))
+              (if (re-search-forward (rx "viewBox=\""
+                                         (group (1+ (or digit "."))) " "
+                                         (group (1+ (or digit "."))) " "
+                                         (group (1+ (or digit "."))) " "
+                                         (group (1+ (or digit ".")))
+                                         "\"")
+	                             nil t)
+                  (progn
+                    (replace-match width t t nil 3)
+                    (replace-match height t t nil 4))
+                (display-warning 'org-graph-view "Unable to match SVG viewBox for fixing.")))
+	  ;; (replace-match  (substring (match-string 1) nil -2)
+          ;;                 t t nil 1)
+	  ;; (replace-match (substring (match-string 2) nil -2)
+          ;;                t t nil 2)
+          (display-warning 'org-graph-view "Unable to match SVG width/height to fix viewBox."))
+        )
       (let* ((image (apply #'create-image (buffer-string) 'svg t nil)))
         (setf (image-property image :map) map)
         (setf (image-property image :source-buffer) source-buffer)
@@ -516,19 +556,42 @@ commands can find the buffer."
   (with-temp-buffer
     (insert graph)
     (org-graph-view--graphviz "cmapx"
+      ;; (debug-warn (buffer-string))
       (mapcar (lambda (area)
-                (pcase-let* ((`(area ,(map shape href title coords)) area)
+                (pcase-let* ((`(area ,(map shape href coords)) area)
                              (coords-list (mapcar #'string-to-number
                                                   (split-string coords ","))))
                   (list (pcase-exhaustive shape
-		          ("circle" (pcase-let ((`(,x ,y ,r) coords-list))
+        	          ("circle" (pcase-let ((`(,x ,y ,r) coords-list))
                                       (cons 'circle (cons (cons x y) r))))
-		          ("poly" (cons 'poly (vconcat coords-list)))
-		          ("rect" (pcase-let ((`(,x0 ,y0 ,x1 ,y1) coords-list))
+        	          ("poly" (cons 'poly (vconcat coords-list)))
+        	          ("rect" (pcase-let ((`(,x0 ,y0 ,x1 ,y1) coords-list))
                                     (cons 'rect
                                           (cons (cons x0 y0) (cons x1 y1))))))
-		        href (list 'help-echo title))))
-              (cddr (libxml-parse-xml-region (point-min) (point-max)))))))
+        	        href (list 'help-echo href))))
+              (cddr (libxml-parse-xml-region (point-min) (point-max))))
+      ;; (cl-labels ((convert-map
+      ;;   	    (map) (-let (((_map _props . areas) map))
+      ;;   		    (mapcar #'convert-area areas)))
+      ;;             (convert-area
+      ;;   	    (area) (-let (((_area (&alist 'shape 'title 'href 'coords)) area))
+      ;;   		     (list (pcase-exhaustive shape
+      ;;   			     ("circle" (cons 'circle (convert-circle coords)))
+      ;;   			     ("poly" (cons 'poly (convert-poly coords)))
+      ;;   			     ("rect" (cons 'rect (convert-rect coords))))
+      ;;   			   href (list :help-echo title))))
+      ;;             (convert-circle
+      ;;   	    (coords) (-let (((x y r) (->> coords (s-split ",") (-map #'string-to-number))))
+      ;;   		       (cons (cons x y) r)))
+      ;;             (convert-poly
+      ;;   	    (coords) (->> coords (s-split ",") (-map #'string-to-number) (apply #'vector)))
+      ;;             (convert-rect
+      ;;   	    (coords) (-let (((x0 y0 x1 y1)
+      ;;   			     (->> coords (s-split ",") (-map #'string-to-number))))
+      ;;   		       (cons (cons x0 y0) (cons x1 y1)))))
+      ;;   (let* ((cmapx (libxml-parse-xml-region (point-min) (point-max))))
+      ;;     (convert-map cmapx)))
+      )))
 
 ;;;; Footer
 
