@@ -209,11 +209,12 @@ options."
             (inhibit-read-only t))
       (with-temp-file "/tmp/org-graph-view.svg"
         (insert (image-property svg-image :data)))
-      (with-current-buffer graph-buffer
-        (erase-buffer)
-        (insert-image svg-image)
-        (pop-to-buffer graph-buffer)
-        (image-minor-mode)))))
+      (save-excursion
+        (with-current-buffer graph-buffer
+          (erase-buffer)
+          (insert-image svg-image)
+          (pop-to-buffer graph-buffer)
+          (image-minor-mode))))))
 
 (defun org-graph-view-jump (event)
   (interactive "e")
@@ -270,13 +271,14 @@ options."
     (when source-buffer
       (pop-to-buffer source-buffer)
       (goto-char begin)
+      (setf (window-point) begin)
       (when (org-before-first-heading-p)
         (outline-next-heading))
       (org-reveal)
       (org-show-entry)
       (org-show-children)
-      (goto-char begin)
-      (call-interactively #'org-graph-view))))
+      (save-excursion
+        (call-interactively #'org-graph-view)))))
 
 (defun org-graph-view-zoom-in-from-graph (event)
   (interactive "e")
@@ -324,21 +326,52 @@ options."
                 (format-node (node depth &optional path)
 		  (when (> depth 0)
 		    (-let* (((_element _properties . children) node)
-			    (path (append path (list node))))
-		      (if children
-                          (list (--map (concat (node-id node) " -> " (node-id it) ";\n")
-                                       children)
-                                (--map (format-node it (1- depth) path)
-                                       children))
-                        (concat (node-id node) ";\n")
-                        ))))
+			    (path (append path (list node)))
+                            (links
+                             (cl-loop for link in (links-in node)
+                                      collect (pcase-let (((map :from :to) link))
+                                                (list (format "%s -> node%s [headclip=false;tailclip=false;constraint=false; style=dotted; arrowsize=0.25];\n"
+                                                              from (pos-of to))
+                                                      (format "node%s [label=\"%s\"]"
+                                                              (pos-of to)
+                                                              ;; HACK.
+                                                              (org-with-point-at (pos-of to)
+                                                                (s-word-wrap
+                                                                 25 (s-replace "\"" "\\\""
+                                                                               (org-entry-get nil "ITEM")))))))))
+                            (nodes
+                             (if children
+                                 (list (--map (concat (node-id node) " -> " (node-id it) ";\n")
+                                              children)
+                                       (--map (format-node it (1- depth) path)
+                                              children))
+                               (list (concat (node-id node) ";\n")))))
+                      (append nodes links))))
                 (node-id (node)
                   (-let* (((_element (properties &as &plist :begin) . _children) node))
                     (or (car (gethash begin nodes))
                         (let* ((node-id (format "node%s" begin))
                                (value (cons node-id node)))
                           (puthash begin value nodes)
-                          node-id)))))
+                          node-id))))
+                (links-in (node)
+                  "Return links in NODE."
+                  (pcase-let* ((`(,_element ,(map :begin) . ,_children) node))
+                    (org-with-point-at (goto-char begin)
+                      (let ((end (org-entry-end-position)))
+                        (cl-loop while (re-search-forward org-link-bracket-re end t)
+                                 do (goto-char (match-beginning 0))
+                                 for link = (save-match-data
+                                              (pcase-let ((`(,_link ,(map :type :path))
+                                                           (org-element-link-parser)))
+                                                (pcase type
+                                                  ("id" (list :from (node-id node) :to path)))))
+                                 when link collect link
+                                 do (goto-char (match-end 0)))))))
+                (pos-of (id)
+                  "Return buffer position of node having ID."
+                  (org-with-wide-buffer
+                   (cdr (org-id-find-id-in-file id (buffer-file-name))))))
       (with-current-buffer buffer
         (list (format-tree (org-element-parse-buffer 'headline)
 			   (+ org-graph-view-depth (1- (or (org-current-level) 1))))
@@ -440,6 +473,8 @@ options."
           (insert "graph" (format-val-list "layout" layout
                                            "bgcolor" (face-attribute 'default :background)
                                            "size" (format "%.1din,%.1din!" width-in height-in)
+                                           "viewport" (format "%.1d,%.1d"
+                                                              (* 72 width-in) (* 72 height-in))
                                            ;; NOTE: The dpi setting is important, because
                                            ;; without it, sometimes cmap areas don't align
                                            ;; with the rendered elements.
