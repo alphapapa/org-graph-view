@@ -521,7 +521,7 @@ options."
 Current buffer should contain a Graphviz graph.  Graphviz is
 called and replaces the buffer content with the rendered output."
   (declare (indent defun) (debug (stringp body)))
-  `(if (zerop (call-process-region (point-min) (point-max) "dot" 'delete t nil
+  `(if (zerop (call-process-region (point-min) (point-max) "dot" 'delete '(t nil) nil
                                    (concat "-T" ,type)))
        (progn
          ,@body)
