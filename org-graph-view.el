@@ -483,7 +483,8 @@ options."
                                            "margin" "0"
                                            "ratio" "fill"
                                            "nodesep" "0"
-                                           "mindist" "0")
+                                           "mindist" "0"
+                                           "splines" "true")
                   ";\n")
           (insert "edge" (format-val-list "color" (face-attribute 'default :foreground)) ";\n")
           (insert "node" (format-val-list "fontname" (face-attribute 'default :family)
