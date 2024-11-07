@@ -328,6 +328,7 @@ options."
                                    ))))
                 (node-id (node)
                          (-let* (((_element (properties &as &plist :begin) . _children) node))
+													 (setq begin (or begin (org-element-property-raw :begin node)))
                            (or (car (gethash begin nodes))
                                (let* ((node-id (format "node%s" begin))
                                       (value (cons node-id node)))
