@@ -501,16 +501,15 @@ commands can find the buffer."
 	;; Although it doesn't seem to fix the problem, so some
 	;; combinations of window and graph sizes still render parts (or
 	;; most) of the SVG off-screen.  *sigh*
-	(goto-char (point-min))
-	(when (re-search-forward (rx "<svg width=\"" (group (1+ (not (any "\"")))) "\" "
-				     "height=\"" (group (1+ (not (any "\"")))) "\"")
-				 nil t)
-	  (replace-match (substring (match-string 1) nil -2) t t nil 1)
-	  (replace-match (substring (match-string 2) nil -2) t t nil 2)))
-      (let* ((image (apply #'create-image (buffer-string) 'svg t nil)))
-        (setf (image-property image :map) map)
-        (setf (image-property image :source-buffer) source-buffer)
-        image))))
+	(let ((svg (car (xml-parse-region (point-min) (point-max))))
+	      image)
+	  (dom-remove-attribute svg 'viewBox)
+	  (dom-remove-attribute svg 'width)
+	  (dom-remove-attribute svg 'height)
+	  (setq image (svg-image svg))
+	  (setf (image-property image :map) map)
+	  (setf (image-property image :source-buffer) source-buffer)
+	  image)))))
 
 (defun org-graph-view--graph-map (graph)
   "Return image map for Graphviz GRAPH."
