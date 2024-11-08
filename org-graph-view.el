@@ -365,10 +365,11 @@ options."
 	       (node) (-let* (((_element (&plist :raw-value) . _children) node))
 			(s-word-wrap 25 (s-replace "\"" "\\\"" (org-link-display-format raw-value)))))
               (node-href
-	       (node) (-let* (((_element (properties &as &plist :begin) . _children) node))
-			(format "%s" begin)))
-	      (node-shape
-	       (node) (-let* (((_element (&plist :todo-type) . children) node))
+								(node) (-let* (((_element (properties &as &plist :begin) . _children) node))
+												 (setq begin (or begin (org-element-property-raw :begin node)))
+												 (format "%s" begin)))
+							(node-shape
+								(node) (-let* (((_element (&plist :todo-type) . children) node))
 			(pcase-exhaustive children
 			  ('nil (pcase todo-type
 				  ('nil org-graph-view-shape-done)
@@ -380,7 +381,7 @@ options."
 			      (base-style (pcase children
 					    ('nil "solid")
 					    (_ "filled")))
-			      (selection-style (when (equal root-node-pos begin)
+			      (selection-style (when (equal root-node-pos (or begin (org-element-property-raw :begin node)))
 						 "bold")))
 			(string-join (delq nil
 					   (list base-style selection-style))
@@ -393,13 +394,14 @@ options."
 			  ('done (level-color level)))))
               (node-fontcolor
 	       (node) (-let* (((_element (&plist :level :begin) . children) node))
-			(pcase children
-			  ('nil (level-color level))
-			  (_ (if (equal begin root-node-pos)
-				 (if (face-attribute 'org-graph-view-selected :inverse-video)
-				     (face-attribute 'org-graph-view-selected :background nil 'default)
-				   (face-attribute 'org-graph-view-selected :foreground nil 'default))
-			       (face-attribute 'default :background))))))
+									(pcase children
+										('nil (level-color level))
+										(_ (if (equal (or begin (org-element-property-raw :begin node))
+																	root-node-pos)
+													 (if (face-attribute 'org-graph-view-selected :inverse-video)
+															 (face-attribute 'org-graph-view-selected :background nil 'default)
+														 (face-attribute 'org-graph-view-selected :foreground nil 'default))
+												 (face-attribute 'default :background))))))
               (level-color
 	       (level) (color-name-to-hex
 			(face-attribute (or (nth (1- level) org-level-faces) 'default)
@@ -410,7 +412,7 @@ options."
               (node-pencolor (node)
                              (-let* (((_element (&plist :level :todo-type :begin) . _children) node))
                                (pcase todo-type
-                                 ('nil (if (equal root-node-pos begin)
+                                 ('nil (if (equal root-node-pos (org-element-property-raw :begin node))
 					   (face-attribute 'org-graph-view-selected :background nil 'default)
 					 (level-color level)))
                                  ('todo (color-name-to-hex (face-attribute 'org-todo :foreground nil 'default)))
