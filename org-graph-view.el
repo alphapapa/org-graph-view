@@ -349,6 +349,8 @@ options."
                       (append nodes links))))
                 (node-id (node)
                   (-let* (((_element (properties &as &plist :begin) . _children) node))
+                    (unless begin
+                      (setf begin (org-element-property :begin node)))
                     (or (car (gethash begin nodes))
                         (let* ((node-id (format "node%s" begin))
                                (value (cons node-id node)))
@@ -357,6 +359,8 @@ options."
                 (links-in (node)
                   "Return links in NODE."
                   (pcase-let* ((`(,_element ,(map :begin) . ,_children) node))
+                    (unless begin
+                      (setf begin (org-element-property :begin node)))
                     (org-with-point-at (goto-char begin)
                       (let ((end (org-entry-end-position)))
                         (cl-loop while (re-search-forward org-link-bracket-re end t)
@@ -404,6 +408,8 @@ options."
 			 (s-word-wrap 25 (s-replace "\"" "\\\"" (org-link-display-format raw-value)))))
               (node-href
 	        (node) (-let* (((_element (properties &as &plist :begin) . _children) node))
+                         (unless begin
+                           (setf begin (org-element-property :begin node)))
 			 (format "%s" begin)))
 	      (node-shape
 	        (node) (-let* (((_element (&plist :todo-type) . children) node))
@@ -415,6 +421,7 @@ options."
 			   (_ org-graph-view-shape-default))))
               (node-style
 	        (node) (-let* (((_element (&plist :begin) . children) node)
+                               (begin (or begin (org-element-property :begin node)))
 			       (base-style (pcase children
 					     ('nil "solid")
 					     (_ "filled")))
@@ -431,6 +438,8 @@ options."
 			   ('done (level-color level)))))
               (node-fontcolor
 	        (node) (-let* (((_element (&plist :level :begin) . children) node))
+                         (unless begin
+                           (setf begin (org-element-property :begin node)))
 			 (pcase children
 			   ('nil (level-color level))
 			   (_ (if (equal begin root-node-pos)
@@ -447,6 +456,8 @@ options."
 			  (color-rgb-to-hex r g b 2)) )
               (node-pencolor (node)
                 (-let* (((_element (&plist :level :todo-type :begin) . _children) node))
+                  (unless begin
+                    (setf begin (org-element-property :begin node)))
                   (pcase todo-type
                     ('nil (if (equal root-node-pos begin)
 			      (face-attribute 'org-graph-view-selected :background nil 'default)
