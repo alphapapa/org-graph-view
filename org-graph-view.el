@@ -185,10 +185,11 @@ options."
                           (window-width-in (/  (window-text-width nil t) monitor-width-res))
                           (window-height-in (/ (window-text-height nil t) monitor-height-res)))
                     (list window-width-in window-height-in
-                          monitor-width-res monitor-height-res))))
+                          monitor-width-res monitor-height-res
+                          (window-text-width nil t) (window-text-height nil t)))))
               (mm-in (mm) (* mm 0.04)))
     (-let* ((graph-buffer (org-graph-view-buffer))
-            ((width-in height-in width-res height-res)
+            ((width-in height-in width-res height-res width-px height-px)
              (save-window-excursion
                (pop-to-buffer graph-buffer)
                (window-dimensions-in)))
@@ -205,7 +206,8 @@ options."
             (_ (with-temp-file "/tmp/org-graph-view.dot"
                  (insert graphviz)))
             (image-map (org-graph-view--graph-map graphviz))
-            (svg-image (org-graph-view--svg graphviz :map image-map :source-buffer (current-buffer)))
+            (svg-image (org-graph-view--svg graphviz :map image-map :source-buffer (current-buffer)
+                                            :max-width width-px :max-height height-px))
             (inhibit-read-only t))
       (with-temp-file "/tmp/org-graph-view.svg"
         (insert (image-property svg-image :data)))
@@ -213,8 +215,10 @@ options."
         (with-current-buffer graph-buffer
           (erase-buffer)
           (insert-image svg-image)
+          ;; (insert-file-contents "/tmp/org-graph-view.svg")
           (pop-to-buffer graph-buffer)
-          (image-minor-mode))))))
+          (unless (eq major-mode 'image-mode)
+            (image-mode)))))))
 
 (defun org-graph-view-jump (event)
   (interactive "e")
@@ -483,16 +487,17 @@ options."
           (insert "digraph orggraphview {\n")
           (insert "graph" (format-val-list "layout" layout
                                            "bgcolor" (face-attribute 'default :background)
-                                           "size" (format "%.1din,%.1din!" width-in height-in)
-                                           "viewport" (format "%.1d,%.1d"
-                                                              (* 72 width-in) (* 72 height-in))
+                                           ;; "size" (format "%.1din,%.1din!" width-in height-in)
+                                           ;; "viewport" (format "%.1d,%.1d"
+                                           ;;                    (* 72 width-in) (* 72 height-in))
                                            ;; NOTE: The dpi setting is important, because
                                            ;; without it, sometimes cmap areas don't align
                                            ;; with the rendered elements.
                                            "dpi" (format "%s" dpi)
 		                           "overlap" org-graph-view-overlap
                                            "margin" "0"
-                                           "ratio" "fill"
+                                           "ratio" (/ height-in width-in)
+                                           ;; "fill"
                                            "nodesep" "0"
                                            "mindist" "0"
                                            "splines" "true")
@@ -538,7 +543,7 @@ called and replaces the buffer content with the rendered output."
          ,@body)
      (error "Oops: %s" (buffer-string))))
 
-(cl-defun org-graph-view--svg (graph &key map source-buffer)
+(cl-defun org-graph-view--svg (graph &key map source-buffer max-width max-height)
   "Return SVG image for Graphviz GRAPH.
 MAP is an Emacs-ready image map to apply to the image's
 properties.  SOURCE-BUFFER is the Org buffer the graph displays,
@@ -555,13 +560,13 @@ commands can find the buffer."
 	;; combinations of window and graph sizes still render parts (or
 	;; most) of the SVG off-screen.  *sigh*
 	(goto-char (point-min))
-	;; (when (re-search-forward (rx "<svg width=\"" (group (1+ (not (any "\"")))) "\" "
-	;;                              "height=\"" (group (1+ (not (any "\"")))) "\"")
-	;;                          nil t)
-	;;   (replace-match  (substring (match-string 1) nil -2)
-        ;;                   t t nil 1)
-	;;   (replace-match (substring (match-string 2) nil -2)
-        ;;                  t t nil 2))
+	(when (re-search-forward (rx "<svg width=\"" (group (1+ (not (any "\"")))) "\" "
+	                             "height=\"" (group (1+ (not (any "\"")))) "\"")
+	                         nil t)
+	  (replace-match  (substring (match-string 1) nil -2)
+                          t t nil 1)
+	  (replace-match (substring (match-string 2) nil -2)
+                         t t nil 2))
         )
       (save-excursion
         ;; HACK: Set SVG viewBox width/height to match the SVG
@@ -596,6 +601,8 @@ commands can find the buffer."
       (let* ((image (apply #'create-image (buffer-string) 'svg t nil)))
         (setf (image-property image :map) map)
         (setf (image-property image :source-buffer) source-buffer)
+        (setf (image-property image :max-width) max-width
+              (image-property image :max-height) max-height)
         image))))
 
 (defun org-graph-view--graph-map (graph)
